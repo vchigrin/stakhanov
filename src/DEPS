@@ -1,0 +1,17 @@
+vars = {
+  # log4cplus REL_1_2_0-RC4 tag.
+  "log4cplus_revision": "77de48a56d8d1e1fee1b7f0e35cdb9d17ad4f738",
+}
+
+deps = {
+  "src/third_party/log4cplus":
+    "https://github.com/log4cplus/log4cplus.git@" + Var("log4cplus_revision"),
+}
+
+hooks = [
+  {
+    'name': 'download_cmake',
+    'pattern': '.',
+    'action': [ 'python', 'src/build/download_cmake.py' ]
+  }
+]
