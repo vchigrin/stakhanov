@@ -1,3 +1,4 @@
-*.py text
 *.cc text
 *.h text
+*.py text
+*.txt text

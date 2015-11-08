@@ -13,5 +13,10 @@ hooks = [
     'name': 'download_cmake',
     'pattern': '.',
     'action': [ 'python', 'src/build/download_cmake.py' ]
-  }
+  },
+  {
+     'name': 'generating_ninja_files',
+     'pattern': '.',
+     'action': [ 'python', 'src/build/run_cmake.py' ]
+  },
 ]

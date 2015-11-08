@@ -1,6 +1,7 @@
 # --------------------- Add file paths below ---------------------------------
 .gclient_entries
 src/build/.cache
+src/out
 src/third_party/cmake
 src/third_party/log4cplus
 # ------------------- Add file type masks below ------------------------------
