@@ -4,4 +4,9 @@
 
 add_library (sthook SHARED
   dllmain.cc
+  functions_interceptor.cc
+  functions_interceptor.h
 )
+
+target_link_libraries (sthook log4cplus)
+target_include_directories (sthook PUBLIC ${LOG4CPLUS_INCLUDE})
