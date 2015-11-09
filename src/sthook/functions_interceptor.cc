@@ -58,12 +58,8 @@ int DLLNameRVA(const ImgDelayDescr* descriptor) {
 
 namespace sthook {
 
-FunctionsInterceptor::FunctionsInterceptor(
-    const std::string& intercepted_dll,
-    const InterceptedFunctions& intercepts)
-    : intercepted_dll_(intercepted_dll),
-      intercepts_(intercepts),
-      hooked_(false) {
+FunctionsInterceptor::FunctionsInterceptor()
+    : hooked_(false) {
   logger_ = log4cplus::Logger::getRoot();
 }
 
@@ -72,10 +68,15 @@ FunctionsInterceptor::~FunctionsInterceptor() {
     Unhook();
 }
 
-bool FunctionsInterceptor::Hook(HMODULE excluded_module) {
+bool FunctionsInterceptor::Hook(
+    const std::string& intercepted_dll,
+    const InterceptedFunctions& intercepts,
+    HMODULE excluded_module) {
   LOG4CPLUS_ASSERT(logger_, !hooked_);
   if (hooked_)
     return false;
+  intercepted_dll_ = intercepted_dll;
+  intercepts_ = intercepts;
   HMODULE intercepted_module = GetModuleHandleA(intercepted_dll_.c_str());
   if (!intercepted_module) {
     LOG4CPLUS_ERROR(logger_, _T("Intercepted module not loaded "));

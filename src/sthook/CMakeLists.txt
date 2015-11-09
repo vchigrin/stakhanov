@@ -6,6 +6,8 @@ add_library (sthook SHARED
   dllmain.cc
   functions_interceptor.cc
   functions_interceptor.h
+  intercepted_functions.cc
+  intercepted_functions.h
 )
 
 target_link_libraries (sthook log4cplus)

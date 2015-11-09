@@ -21,10 +21,11 @@ class FunctionsInterceptor {
  public:
   // Map from function name in intercepted_dll to new address.
   typedef std::unordered_map<std::string, void*> InterceptedFunctions;
-  FunctionsInterceptor(const std::string& intercepted_dll,
-                       const InterceptedFunctions& intercepts);
+  FunctionsInterceptor();
   ~FunctionsInterceptor();
-  bool Hook(HMODULE excluded_module);
+  bool Hook(const std::string& intercepted_dll,
+            const InterceptedFunctions& intercepts,
+            HMODULE excluded_module);
   void Unhook();
   // Called to patch IAT on newly loaded module.
   void PatchIAT(HMODULE module);

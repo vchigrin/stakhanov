@@ -27,4 +27,6 @@ endif()
 set (BUILD_SHARED_LIBS FALSE CACHE BOOL "" FORCE)
 add_subdirectory (third_party/log4cplus)
 set (LOG4CPLUS_INCLUDE ${CMAKE_SOURCE_DIR}/third_party/log4cplus/include)
+
+add_subdirectory (stlaunch)
 add_subdirectory (sthook)
