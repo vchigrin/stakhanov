@@ -2,7 +2,7 @@
 # Use of this source code is governed by a GPLv2 license that can be
 # found in the LICENSE file.
 
-add_library (sthook SHARED
+add_library(sthook SHARED
   dllmain.cc
   functions_interceptor.cc
   functions_interceptor.h
@@ -10,5 +10,5 @@ add_library (sthook SHARED
   intercepted_functions.h
 )
 
-target_link_libraries (sthook log4cplus)
-target_include_directories (sthook PUBLIC ${LOG4CPLUS_INCLUDE})
+target_link_libraries(sthook log4cplus)
+target_include_directories(sthook PUBLIC ${LOG4CPLUS_INCLUDE})
