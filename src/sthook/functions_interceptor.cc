@@ -212,7 +212,8 @@ const IMAGE_OPTIONAL_HEADER32* FunctionsInterceptor::GetPEOptionalHeader(
     LOG4CPLUS_ERROR(logger_, _T("No optional header"));
     return nullptr;
   }
-  return &pe_header->OptionalHeader;
+  return reinterpret_cast<const IMAGE_OPTIONAL_HEADER32*>(
+      &pe_header->OptionalHeader);
 }
 
 const IMAGE_DATA_DIRECTORY* FunctionsInterceptor::GetImageExportDir(
@@ -284,7 +285,7 @@ void FunctionsInterceptor::HookImportDescriptor(
     if (it_function != intercepts_.end()) {
       Patch(
           reinterpret_cast<void**>(
-              const_cast<DWORD*>(&address_entry->u1.AddressOfData)),
+              const_cast<ULONGLONG*>(&address_entry->u1.AddressOfData)),
           it_function->second, true);
       break;
     }
