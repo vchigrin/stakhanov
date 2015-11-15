@@ -47,7 +47,7 @@ def extract(archive, out_dir):
             target_dir = os.path.dirname(target_object)
             if not os.path.exists(target_dir):
                 os.makedirs(target_dir)
-            if target_object[-1] == '/':
+            if target_object[-1] in ['/', '\\']:
                 continue
             with open(target_object, 'wb') as f:
                 f.write(zfile.read(item))
