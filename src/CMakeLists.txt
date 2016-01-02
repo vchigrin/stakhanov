@@ -52,6 +52,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D UNICODE -D _UNICODE")
 endif()
 
+add_subdirectory(base)
 add_subdirectory(stlaunch)
 add_subdirectory(sthook)
 add_subdirectory(stexecutor)

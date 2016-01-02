@@ -12,7 +12,11 @@ add_executable(stexecutor
   gen-cpp/Executor.cpp
 )
 
-target_link_libraries(stexecutor log4cplus)
+target_link_libraries(stexecutor
+  base
+  log4cplus
+)
+
 link_against_thrift_library(stexecutor thrift)
 
 target_include_directories(stexecutor PUBLIC ${CMAKE_CURRENT_BINARY_DIR})

@@ -10,5 +10,9 @@ add_library(sthook SHARED
   intercepted_functions.h
 )
 
-target_link_libraries(sthook log4cplus)
+target_link_libraries(sthook
+  base
+  log4cplus
+)
+
 target_include_directories(sthook PUBLIC ${LOG4CPLUS_INCLUDE})
