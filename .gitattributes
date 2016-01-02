@@ -1,4 +1,6 @@
 *.cc text
 *.h text
 *.py text
+*.thrift text
 *.txt text
+.gitattributes text
