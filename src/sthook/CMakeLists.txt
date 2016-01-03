@@ -10,9 +10,35 @@ add_library(sthook SHARED
   intercepted_functions.h
 )
 
+add_custom_command(OUTPUT gen-cpp/Executor.cpp
+    COMMAND thrift-compiler --gen cpp -r
+    ${CMAKE_CURRENT_SOURCE_DIR}/stexecutor.thrift
+)
+
+# Small static library with common code need both for sthook and stexecutor.
+add_library(sthook_communication STATIC
+  gen-cpp/Executor.cpp
+  sthook_communication.cc
+  sthook_communication.h
+)
+
+link_against_thrift_library(sthook_communication thrift)
+
+target_include_directories(sthook_communication PUBLIC
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${BOOST_INCLUDE}
+    ${THRIFT_INCLUDE}
+    ${LOG4CPLUS_INCLUDE}
+)
+
 target_link_libraries(sthook
   base
   log4cplus
+  sthook_communication
+)
+
+target_compile_definitions(sthook PRIVATE
+  _WINSOCKAPI_
 )
 
 target_include_directories(sthook PUBLIC ${LOG4CPLUS_INCLUDE})

@@ -9,9 +9,14 @@
 #include <memory>
 #include <string>
 
+#include "gen-cpp/Executor.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "sthook/functions_interceptor.h"
+#include "sthook/sthook_communication.h"
+#include "thrift/protocol/TBinaryProtocol.h"
+#include "thrift/transport/TBufferTransports.h"
+#include "thrift/transport/TSocket.h"
 
 namespace {
 
@@ -22,6 +27,31 @@ sthook::FunctionsInterceptor* GetInterceptor() {
   if (!g_interceptor)
     g_interceptor.reset(new sthook::FunctionsInterceptor());
   return g_interceptor.get();
+}
+
+ExecutorIf* GetExecutor() {
+  using apache::thrift::TException;
+  using apache::thrift::protocol::TBinaryProtocol;
+  using apache::thrift::transport::TBufferedTransport;
+  using apache::thrift::transport::TSocket;
+
+  static std::unique_ptr<ExecutorClient> g_executor;
+  if (!g_executor) {
+    try {
+      boost::shared_ptr<TSocket> socket(new TSocket(
+          "localhost", sthook::GetExecutorPort()));
+      boost::shared_ptr<TBufferedTransport> transport(
+          new TBufferedTransport(socket));
+      boost::shared_ptr<TBinaryProtocol> protocol(
+          new TBinaryProtocol(transport));
+      g_executor.reset(new ExecutorClient(protocol));
+      transport->open();
+    } catch (TException& ex) {
+      LOG4CPLUS_FATAL(logger_, "Thrift initialization failure " << ex.what());
+      throw;
+    }
+  }
+  return g_executor.get();
 }
 
 std::wstring g_current_module_name;

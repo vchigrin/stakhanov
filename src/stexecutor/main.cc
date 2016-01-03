@@ -5,16 +5,17 @@
 #include "base/init_logging.h"
 
 #include "boost/smart_ptr/make_shared.hpp"
+#include "gen-cpp/Executor.h"
 #include "log4cplus/appender.h"
 #include "log4cplus/layout.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "log4cplus/win32debugappender.h"
+#include "sthook/sthook_communication.h"
 #include "thrift/server/TThreadedServer.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TServerSocket.h"
 
-#include "gen-cpp/Executor.h"
 
 using apache::thrift::server::TThreadedServer;
 using apache::thrift::transport::TServerSocket;
@@ -41,7 +42,7 @@ int main(int argc, char* argv) {
   boost::shared_ptr<ExecutorImpl> executor(new ExecutorImpl());
   TThreadedServer server(
       boost::make_shared<ExecutorProcessor>(executor),
-      boost::make_shared<TServerSocket>(9090),  // port
+      boost::make_shared<TServerSocket>(sthook::GetExecutorPort()),
       boost::make_shared<TBufferedTransportFactory>(),
       boost::make_shared<TBinaryProtocolFactory>());
   LOG4CPLUS_INFO(logger_, "Thrift server starting...");
