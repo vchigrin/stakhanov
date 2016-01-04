@@ -14,6 +14,18 @@ if(MSVC)
   set(MSVC_DISABLED_WARNINGS
     "/wd4800")  # Forcing value of BOOL to true/false
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MSVC_DISABLED_WARNINGS}")
+  # It is guarantes these env. variables set correctly during gclient runhooks
+  # only. Write them to cache only if they are present and re-use them
+  # later, when CMake is re-invoked by ninja, when these variables may be
+  # absent.
+  if(DEFINED ENV{INCLUDE})
+    set(CACHED_INCLUDE "$ENV{INCLUDE}" CACHE INTERNAL "Preserved include path")
+  endif()
+  if(DEFINED ENV{LIB})
+    set(CACHED_LIB "$ENV{LIB}" CACHE INTERNAL "Preserved lib path")
+  endif()
+  include_directories(SYSTEM ${CACHED_INCLUDE})
+  link_directories(${CACHED_LIB})
 endif()
 
 # TODO(vchigrin): Use ExternalProject_Add
