@@ -127,20 +127,28 @@ void FunctionsInterceptor::PatchIAT(HMODULE module) {
     return;
   }
   const uint8_t* base_address = reinterpret_cast<const uint8_t*>(module);
-  const IMAGE_OPTIONAL_HEADER32* optional_header =
+  const IMAGE_OPTIONAL_HEADER32* maybe_opt_header_32 =
       GetPEOptionalHeader(base_address);
-  if (!optional_header)
+  if (!maybe_opt_header_32) {
+    LOG4CPLUS_WARN(
+        logger_,
+        "Failed get optional header in module " << std::hex << module);
     return;
-  if (optional_header->NumberOfRvaAndSizes >= IMAGE_DIRECTORY_ENTRY_IMPORT) {
+  }
+  const IMAGE_DATA_DIRECTORY* import_data_dir = GetImageDir(
+      base_address, maybe_opt_header_32, IMAGE_DIRECTORY_ENTRY_IMPORT);
+  if (import_data_dir) {
     HookImportDirectory<IMAGE_IMPORT_DESCRIPTOR>(
         base_address,
-        optional_header->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT]);
+        *import_data_dir);
   }
-  if (optional_header->NumberOfRvaAndSizes >=
-    IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT) {
+  const IMAGE_DATA_DIRECTORY* delay_import_data_dir = GetImageDir(
+      base_address, maybe_opt_header_32, IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT);
+
+  if (delay_import_data_dir) {
     HookImportDirectory<ImgDelayDescr>(
         base_address,
-        optional_header->DataDirectory[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT]);
+        *delay_import_data_dir);
   }
   hooked_ = true;
   return;
@@ -165,7 +173,10 @@ void FunctionsInterceptor::Unhook() {
 void FunctionsInterceptor::FillOrdinalToName(HMODULE module) {
   ordinal_to_name_.clear();
   const uint8_t* base_address = reinterpret_cast<const uint8_t*>(module);
-  const IMAGE_DATA_DIRECTORY* export_data_dir = GetImageExportDir(base_address);
+  const IMAGE_OPTIONAL_HEADER32* maybe_opt_header_32 =
+      GetPEOptionalHeader(base_address);
+  const IMAGE_DATA_DIRECTORY* export_data_dir = GetImageDir(
+      base_address, maybe_opt_header_32, IMAGE_DIRECTORY_ENTRY_EXPORT);
   if (!export_data_dir) {
     LOG4CPLUS_ERROR(logger_, _T("Hooked module has no exports"));
     return;
@@ -216,22 +227,26 @@ const IMAGE_OPTIONAL_HEADER32* FunctionsInterceptor::GetPEOptionalHeader(
       &pe_header->OptionalHeader);
 }
 
-const IMAGE_DATA_DIRECTORY* FunctionsInterceptor::GetImageExportDir(
-    const uint8_t* image_base) {
-  const IMAGE_OPTIONAL_HEADER32* opt_header_32 =
-      GetPEOptionalHeader(image_base);
-  if (!opt_header_32)
+const IMAGE_DATA_DIRECTORY* FunctionsInterceptor::GetImageDir(
+    const uint8_t* image_base,
+    const IMAGE_OPTIONAL_HEADER32* maybe_opt_header_32,
+    int directory_entry_idx) {
+  if (!maybe_opt_header_32)
     return nullptr;
-  if (opt_header_32->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+  if (maybe_opt_header_32->Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
     const IMAGE_OPTIONAL_HEADER64* opt_header_64 =
-        reinterpret_cast<const IMAGE_OPTIONAL_HEADER64*>(opt_header_32);
-    if (opt_header_64->NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT)
+        reinterpret_cast<const IMAGE_OPTIONAL_HEADER64*>(maybe_opt_header_32);
+    if (static_cast<int>(opt_header_64->NumberOfRvaAndSizes)
+         <= directory_entry_idx) {
       return nullptr;
-    return &opt_header_64->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-  } else if (opt_header_32->Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
-    if (opt_header_32->NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT)
+    }
+    return &opt_header_64->DataDirectory[directory_entry_idx];
+  } else if (maybe_opt_header_32->Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+    if (static_cast<int>(maybe_opt_header_32->NumberOfRvaAndSizes)
+         <= directory_entry_idx) {
       return nullptr;
-    return &opt_header_32->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    }
+    return &maybe_opt_header_32->DataDirectory[directory_entry_idx];
   } else {
     return nullptr;
   }
@@ -242,8 +257,9 @@ template<typename ImportDescriptorType>
 void FunctionsInterceptor::HookImportDirectory(
     const uint8_t* base_address,
     const IMAGE_DATA_DIRECTORY& import_directory) {
-  if (import_directory.VirtualAddress == 0)
+  if (import_directory.VirtualAddress == 0) {
     return;  // Seems, if module has no imports, this can be 0.
+  }
   const ImportDescriptorType* cur_import_descriptor =
       reinterpret_cast<const ImportDescriptorType*>(
           base_address + import_directory.VirtualAddress);

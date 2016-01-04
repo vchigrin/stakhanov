@@ -40,7 +40,10 @@ class FunctionsInterceptor {
   std::vector<HMODULE> GetLoadedModules();
   void FillOrdinalToName(HMODULE module);
   const IMAGE_OPTIONAL_HEADER32* GetPEOptionalHeader(const uint8_t* image_base);
-  const IMAGE_DATA_DIRECTORY* GetImageExportDir(const uint8_t* image_base);
+  const IMAGE_DATA_DIRECTORY* GetImageDir(
+      const uint8_t* image_base,
+      const IMAGE_OPTIONAL_HEADER32* maybe_opt_header_32,
+      int directory_entry_idx);
   template<typename ImportDescriptorType>
   void HookImportDirectory(
       const uint8_t* base_address,
