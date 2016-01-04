@@ -10,6 +10,12 @@ add_library(sthook SHARED
   intercepted_functions.h
 )
 
+if(CMAKE_CL_64)
+  set_target_properties(sthook PROPERTIES OUTPUT_NAME sthook64)
+else()
+  set_target_properties(sthook PROPERTIES OUTPUT_NAME sthook32)
+endif()
+
 add_custom_command(OUTPUT gen-cpp/Executor.cpp
     COMMAND thrift-compiler --gen cpp -r
     ${CMAKE_CURRENT_SOURCE_DIR}/stexecutor.thrift

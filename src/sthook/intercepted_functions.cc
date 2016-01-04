@@ -24,6 +24,9 @@ namespace {
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
+const wchar_t kDllName32Bit[] = L"sthook32.dll";
+const wchar_t kDllName64Bit[] = L"sthook64.dll";
+
 sthook::FunctionsInterceptor* GetInterceptor() {
   static std::unique_ptr<sthook::FunctionsInterceptor> g_interceptor;
   if (!g_interceptor)
@@ -56,7 +59,7 @@ ExecutorIf* GetExecutor() {
   return g_executor.get();
 }
 
-std::wstring g_current_module_name;
+std::wstring g_current_module_dir;
 
 void InitCurrentModuleName(HMODULE current_module) {
   // Must be enough.
@@ -68,11 +71,16 @@ void InitCurrentModuleName(HMODULE current_module) {
     return;
   }
   LOG4CPLUS_DEBUG(logger_, "Retrieved dll path  " << buffer);
-  g_current_module_name = buffer;
+  wchar_t* last_component = wcsrchr(buffer, L'\\');
+  if (last_component) {
+    last_component++;
+    *last_component = '\0';
+  }
+  g_current_module_dir = buffer;
 }
 
-std::wstring GetCurrentModuleName() {
-  return g_current_module_name;
+std::wstring GetDllForInject(bool is_64bit) {
+  return g_current_module_dir + (is_64bit ? kDllName64Bit : kDllName32Bit);
 }
 
 HANDLE WINAPI NewCreateFileA(
@@ -147,8 +155,19 @@ HMODULE WINAPI NewLoadLibraryW(LPCWSTR file_name) {
   return result;
 }
 
+bool Is64BitProcess(HANDLE process_handle) {
+  BOOL result = FALSE;
+  if (!IsWow64Process(process_handle, &result)) {
+    DWORD error_code = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "IsWow64BitProcess failed, error " << error_code);
+    return false;
+  }
+  return !result;
+}
+
 void InjectDll(HANDLE process_handle) {
-  std::wstring current_dll_name = GetCurrentModuleName();
+  bool is_64bit = Is64BitProcess(process_handle);
+  std::wstring current_dll_name = GetDllForInject(is_64bit);
   const size_t buffer_len = (current_dll_name.length() + 1) * sizeof(WCHAR);
   LPVOID remote_addr = VirtualAllocEx(
       process_handle,

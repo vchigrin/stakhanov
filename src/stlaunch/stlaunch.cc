@@ -7,7 +7,12 @@
 #include <iostream>
 #include <vector>
 
-static const wchar_t kHookLibraryName[] = L"sthook.dll";
+static const wchar_t kHookLibraryName[] =
+#ifdef _WIN64
+    L"sthook64.dll";
+#else
+    L"sthook32.dll";
+#endif
 
 int wmain(int argc, wchar_t* argv[]) {
   if (argc < 2) {
