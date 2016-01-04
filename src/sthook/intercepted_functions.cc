@@ -6,9 +6,11 @@
 
 #include <windows.h>
 
+#include <codecvt>
 #include <memory>
 #include <string>
 
+#include "boost/filesystem.hpp"
 #include "gen-cpp/Executor.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
@@ -81,7 +83,15 @@ HANDLE WINAPI NewCreateFileA(
     DWORD creation_disposition,
     DWORD flags_and_attributes,
     HANDLE template_file) {
-  LOG4CPLUS_INFO(logger_, "CreateFileA " << file_name);
+  LOG4CPLUS_DEBUG(logger_, "CreateFileA " << file_name);
+  boost::filesystem::path file_path(file_name);
+  boost::filesystem::path abs_path = boost::filesystem::absolute(
+      file_path);
+  std::string abs_path_utf8 = abs_path.string(
+      std::codecvt_utf8_utf16<wchar_t>());
+  GetExecutor()->HookedCreateFile(
+      abs_path_utf8,
+      (creation_disposition & GENERIC_WRITE) != 0);
   return CreateFileA(
       file_name,
       desired_access,
@@ -100,7 +110,15 @@ HANDLE WINAPI NewCreateFileW(
     DWORD creation_disposition,
     DWORD flags_and_attributes,
     HANDLE template_file) {
-  LOG4CPLUS_INFO(logger_, "CreateFileW " << file_name);
+  LOG4CPLUS_DEBUG(logger_, "CreateFileW " << file_name);
+  boost::filesystem::path file_path(file_name);
+  boost::filesystem::path abs_path = boost::filesystem::absolute(
+      file_path);
+  std::string abs_path_utf8 = abs_path.string(
+      std::codecvt_utf8_utf16<wchar_t>());
+  GetExecutor()->HookedCreateFile(
+      abs_path_utf8,
+      (creation_disposition & GENERIC_WRITE) != 0);
   return CreateFileW(
       file_name,
       desired_access,

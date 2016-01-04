@@ -32,6 +32,7 @@ target_include_directories(sthook_communication PUBLIC
 )
 
 target_link_libraries(sthook
+  ${Boost_LIBRARIES}
   base
   log4cplus
   sthook_communication
