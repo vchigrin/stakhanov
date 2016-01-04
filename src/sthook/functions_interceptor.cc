@@ -301,7 +301,7 @@ void FunctionsInterceptor::HookImportDescriptor(
     if (it_function != intercepts_.end()) {
       Patch(
           reinterpret_cast<void**>(
-              const_cast<ULONGLONG*>(&address_entry->u1.AddressOfData)),
+              &const_cast<IMAGE_THUNK_DATA*>(address_entry)->u1.AddressOfData),
           it_function->second, true);
       break;
     }

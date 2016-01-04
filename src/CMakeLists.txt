@@ -33,7 +33,11 @@ set(LOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME OFF CACHE BOOL "" FORCE)
 
 # ---------------------- Boost ---------------------------------------------
 set(BOOST_ROOT "C:\\local\\boost_1_59_0")
-set(BOOST_LIBRARYDIR "${BOOST_ROOT}\\lib64-msvc-14.0")
+if(CMAKE_CL_64)
+  set(BOOST_LIBRARYDIR "${BOOST_ROOT}\\lib64-msvc-14.0")
+else()
+  set(BOOST_LIBRARYDIR "${BOOST_ROOT}\\lib32-msvc-14.0")
+endif()
 set(BOOST_INCLUDE "${BOOST_ROOT}")
 set(Boost_USE_STATIC_LIBS        ON) # only find static libs
 set(Boost_USE_MULTITHREADED      ON)
