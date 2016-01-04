@@ -32,16 +32,6 @@ hooks = [
     ]
   },
   {
-    'name': 'download_boost',
-    'pattern': '.',
-    'action': [
-         'python', 'src/build/download_third_party.py',
-         'http://downloads.sourceforge.net/project/boost/boost/1.59.0/boost_1_59_0.zip',
-         'boost_1_59_0.zip', 'boost'
-    ]
-  },
-
-  {
      'name': 'generating_ninja_files',
      'pattern': '.',
      'action': [ 'python', 'src/build/run_cmake.py' ]

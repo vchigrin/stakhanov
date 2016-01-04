@@ -20,8 +20,12 @@ endif()
 set(LOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME OFF CACHE BOOL "" FORCE)
 
 # ---------------------- Boost ---------------------------------------------
-set(BOOST_ROOT "${CMAKE_SOURCE_DIR}/third_party/boost")
+set(BOOST_ROOT "C:\\local\\boost_1_59_0")
+set(BOOST_LIBRARYDIR "${BOOST_ROOT}\\lib64-msvc-14.0")
 set(BOOST_INCLUDE "${BOOST_ROOT}")
+set(Boost_USE_STATIC_LIBS        ON) # only find static libs
+set(Boost_USE_MULTITHREADED      ON)
+find_package(Boost REQUIRED COMPONENTS system filesystem)
 
 # ---------------------- Thrift --------------------------------------------
 set(WITH_SHARED_LIB OFF CACHE BOOL "" FORCE)
