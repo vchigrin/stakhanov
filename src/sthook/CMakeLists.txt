@@ -16,9 +16,11 @@ else()
   set_target_properties(sthook PROPERTIES OUTPUT_NAME sthook32)
 endif()
 
-add_custom_command(OUTPUT gen-cpp/Executor.cpp
-    COMMAND thrift-compiler --gen cpp -r
+add_custom_command(
+  OUTPUT gen-cpp/Executor.cpp gen-cpp/Executor.h
+  COMMAND thrift-compiler --gen cpp -r
     ${CMAKE_CURRENT_SOURCE_DIR}/stexecutor.thrift
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/stexecutor.thrift
 )
 
 # Small static library with common code need both for sthook and stexecutor.

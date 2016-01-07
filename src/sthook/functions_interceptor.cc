@@ -79,7 +79,7 @@ bool FunctionsInterceptor::Hook(
   intercepts_ = intercepts;
   HMODULE intercepted_module = GetModuleHandleA(intercepted_dll_.c_str());
   if (!intercepted_module) {
-    LOG4CPLUS_ERROR(logger_, _T("Intercepted module not loaded "));
+    LOG4CPLUS_ERROR(logger_, "Intercepted module not loaded");
     return false;
   }
   hooked_ = true;
@@ -123,7 +123,7 @@ std::vector<HMODULE> FunctionsInterceptor::GetLoadedModules() {
 
 void FunctionsInterceptor::PatchIAT(HMODULE module) {
   if (!hooked_) {
-    LOG4CPLUS_ASSERT(logger_, _T("Hooks should be installed"));
+    LOG4CPLUS_ASSERT(logger_, "Hooks should be installed");
     return;
   }
   const uint8_t* base_address = reinterpret_cast<const uint8_t*>(module);

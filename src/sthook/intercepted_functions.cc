@@ -24,9 +24,6 @@ namespace {
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
-const wchar_t kDllName32Bit[] = L"sthook32.dll";
-const wchar_t kDllName64Bit[] = L"sthook64.dll";
-
 sthook::FunctionsInterceptor* GetInterceptor() {
   // Will leak, but it seems to be less evil then strange crashes
   // during ExitProcess in case when some of patched modules already
@@ -60,30 +57,6 @@ ExecutorIf* GetExecutor() {
     }
   }
   return g_executor.get();
-}
-
-std::wstring g_current_module_dir;
-
-void InitCurrentModuleName(HMODULE current_module) {
-  // Must be enough.
-  wchar_t buffer[MAX_PATH + 1];
-  DWORD result = GetModuleFileName(current_module, buffer, MAX_PATH + 1);
-  if (result == 0 || result > MAX_PATH) {
-    LOG4CPLUS_ERROR(
-        logger_, "Failed get module file name " << GetLastError());
-    return;
-  }
-  LOG4CPLUS_DEBUG(logger_, "Retrieved dll path  " << buffer);
-  wchar_t* last_component = wcsrchr(buffer, L'\\');
-  if (last_component) {
-    last_component++;
-    *last_component = '\0';
-  }
-  g_current_module_dir = buffer;
-}
-
-std::wstring GetDllForInject(bool is_64bit) {
-  return g_current_module_dir + (is_64bit ? kDllName64Bit : kDllName32Bit);
 }
 
 HANDLE WINAPI NewCreateFileA(
@@ -158,64 +131,6 @@ HMODULE WINAPI NewLoadLibraryW(LPCWSTR file_name) {
   return result;
 }
 
-bool Is64BitProcess(HANDLE process_handle) {
-  BOOL result = FALSE;
-  if (!IsWow64Process(process_handle, &result)) {
-    DWORD error_code = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "IsWow64BitProcess failed, error " << error_code);
-    return false;
-  }
-  return !result;
-}
-
-void InjectDll(HANDLE process_handle) {
-  bool is_64bit = Is64BitProcess(process_handle);
-  std::wstring current_dll_name = GetDllForInject(is_64bit);
-  const size_t buffer_len = (current_dll_name.length() + 1) * sizeof(WCHAR);
-  LPVOID remote_addr = VirtualAllocEx(
-      process_handle,
-      nullptr,
-      buffer_len,
-      MEM_COMMIT,
-      PAGE_READWRITE);
-  if (!remote_addr) {
-    LOG4CPLUS_ERROR(
-        logger_, "Failed allocate remote memory " << GetLastError());
-    return;
-  }
-  SIZE_T bytes_written = 0;
-  BOOL result = WriteProcessMemory(
-      process_handle,
-      remote_addr,
-      current_dll_name.c_str(),
-      buffer_len,
-      &bytes_written);
-  if (!result || bytes_written != buffer_len) {
-    LOG4CPLUS_ERROR(
-        logger_, "WriteProcessMemory failed " << GetLastError());
-    VirtualFreeEx(process_handle, remote_addr, 0, MEM_RELEASE);
-    return;
-  }
-
-  HANDLE thread_handle = CreateRemoteThread(
-      process_handle,
-      nullptr,
-      0,
-      reinterpret_cast<LPTHREAD_START_ROUTINE>(&LoadLibraryW),
-      remote_addr,
-      0,
-      nullptr);
-  if (!thread_handle) {
-    LOG4CPLUS_ERROR(
-        logger_, "Failed create remote thread " << GetLastError());
-    VirtualFreeEx(process_handle, remote_addr, 0, MEM_RELEASE);
-    return;
-  }
-  WaitForSingleObject(thread_handle, INFINITE);
-  CloseHandle(thread_handle);
-  VirtualFreeEx(process_handle, remote_addr, 0, MEM_RELEASE);
-}
-
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
 BOOL CreateProcessImpl(
     FUNCTION actual_function,
@@ -248,7 +163,8 @@ BOOL CreateProcessImpl(
       process_information);
   if (!result)
     return result;
-  InjectDll(process_information->hProcess);
+  GetExecutor()->OnSuspendedProcessCreated(
+      GetCurrentProcessId(), process_information->dwProcessId);
   if (!request_suspended)
     ResumeThread(process_information->hThread);
   return result;
@@ -317,9 +233,7 @@ bool InstallHooks(HMODULE current_module) {
   intercepts.insert(std::make_pair("LoadLibraryW", &NewLoadLibraryW));
   intercepts.insert(std::make_pair("CreateProcessA", &NewCreateProcessA));
   intercepts.insert(std::make_pair("CreateProcessW", &NewCreateProcessW));
-  InitCurrentModuleName(current_module);
   return GetInterceptor()->Hook("kernel32.dll", intercepts, current_module);
 }
 
 }  // namespace sthook
-

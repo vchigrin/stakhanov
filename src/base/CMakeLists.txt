@@ -3,10 +3,20 @@
 # found in the LICENSE file.
 
 add_library(base STATIC
-  init_logging.h
+  filesystem_utils.cc
+  filesystem_utils.h
   init_logging.cc
+  init_logging.h
+  sthook_constants.cc
+  sthook_constants.h
 )
 
-target_link_libraries(base log4cplus)
-target_include_directories(base PUBLIC ${LOG4CPLUS_INCLUDE})
+target_link_libraries(base
+  ${Boost_LIBRARIES}
+  log4cplus
+)
 
+target_include_directories(base PUBLIC
+  ${BOOST_INCLUDE}
+  ${LOG4CPLUS_INCLUDE}
+)

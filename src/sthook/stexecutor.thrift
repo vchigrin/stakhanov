@@ -6,4 +6,6 @@
 service Executor {
   bool HookedCreateFile(1:string abs_path, 2:bool for_writing);
   void HookedCloseFile(1:string abs_path);
+
+  void OnSuspendedProcessCreated(1:i32 current_pid, 2:i32 child_pid);
 }

@@ -3,6 +3,10 @@
 # found in the LICENSE file.
 
 add_executable(stexecutor
+  dll_injector.cc
+  dll_injector.h
+  executor_impl.cc
+  executor_impl.h
   main.cc
 )
 
@@ -18,3 +22,8 @@ target_include_directories(stexecutor PUBLIC
     ${THRIFT_INCLUDE}
     ${LOG4CPLUS_INCLUDE}
 )
+
+if(NOT CMAKE_CL_64)
+  add_executable(get_load_library_addr32 get_load_library_addr.cc)
+  add_dependencies(stexecutor get_load_library_addr32)
+endif()
