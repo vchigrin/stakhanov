@@ -303,7 +303,6 @@ void FunctionsInterceptor::HookImportDescriptor(
           reinterpret_cast<void**>(
               &const_cast<IMAGE_THUNK_DATA*>(address_entry)->u1.AddressOfData),
           it_function->second, true);
-      break;
     }
   }
 }
