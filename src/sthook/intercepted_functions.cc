@@ -28,10 +28,13 @@ const wchar_t kDllName32Bit[] = L"sthook32.dll";
 const wchar_t kDllName64Bit[] = L"sthook64.dll";
 
 sthook::FunctionsInterceptor* GetInterceptor() {
-  static std::unique_ptr<sthook::FunctionsInterceptor> g_interceptor;
+  // Will leak, but it seems to be less evil then strange crashes
+  // during ExitProcess in case when some of patched modules already
+  // unloaded.
+  static sthook::FunctionsInterceptor* g_interceptor;
   if (!g_interceptor)
-    g_interceptor.reset(new sthook::FunctionsInterceptor());
-  return g_interceptor.get();
+    g_interceptor = new sthook::FunctionsInterceptor();
+  return g_interceptor;
 }
 
 ExecutorIf* GetExecutor() {
