@@ -32,16 +32,18 @@ uint32_t GetLoadLibraryAddr32(
   STARTUPINFO si = { 0 };
   if (!CreateProcessW(exe_path.c_str(), NULL, NULL, NULL, FALSE,
       0, NULL, NULL, &si, &pi)) {
+    DWORD error = GetLastError();
     LOG4CPLUS_FATAL(logger_,
         ("Failed get LoadLibraryW 32-bit addr."
-         " Process creation failed. Error ") << GetLastError());
+         " Process creation failed. Error ") << error);
     return 0;
   }
   WaitForSingleObject(pi.hProcess, INFINITE);
   DWORD result = 0;
   if (!GetExitCodeProcess(pi.hProcess, &result)) {
+    DWORD error = GetLastError();
     LOG4CPLUS_ERROR(
-        logger_, "GetExitCodeProcess failed error " << GetLastError());
+        logger_, "GetExitCodeProcess failed error " << error);
     return 0;
   }
   CloseHandle(pi.hProcess);

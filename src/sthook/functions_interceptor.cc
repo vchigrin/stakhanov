@@ -310,7 +310,8 @@ void FunctionsInterceptor::HookImportDescriptor(
 void FunctionsInterceptor::Patch(void** dest, void* val, bool remember) {
   MEMORY_BASIC_INFORMATION memory_info = { 0 };
   if (!VirtualQuery(dest, &memory_info, sizeof(memory_info))) {
-    LOG4CPLUS_ERROR(logger_, _T("VirtualQuery failed ") << GetLastError());
+    DWORD error_code = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "VirtualQuery failed " << error_code);
     return;
   }
 
@@ -333,7 +334,8 @@ void FunctionsInterceptor::Patch(void** dest, void* val, bool remember) {
     *dest = val;
     VirtualProtect(dest, sizeof(val), old_protection, &old_protection);
   } else {
-    LOG4CPLUS_ERROR(logger_, _T("VirtualProtect failed ") << GetLastError());
+    DWORD error_code = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "VirtualProtect failed " << error_code);
   }
 }
 
