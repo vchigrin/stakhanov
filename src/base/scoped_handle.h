@@ -11,6 +11,10 @@ namespace base {
 
 class ScopedHandle {
  public:
+  ScopedHandle()
+    : value_(NULL) {
+  }
+
   explicit ScopedHandle(HANDLE value)
     : value_(value) {
   }

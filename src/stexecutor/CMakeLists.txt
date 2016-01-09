@@ -7,6 +7,8 @@ add_executable(stexecutor
   dll_injector.h
   executor_impl.cc
   executor_impl.h
+  executor_factory.cc
+  executor_factory.h
   main.cc
 )
 
@@ -14,6 +16,10 @@ target_link_libraries(stexecutor
   base
   sthook_communication
   log4cplus
+)
+
+target_compile_definitions(stexecutor PRIVATE
+  _WINSOCKAPI_
 )
 
 target_include_directories(stexecutor PUBLIC

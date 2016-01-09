@@ -9,6 +9,8 @@ add_library(base STATIC
   init_logging.h
   sthook_constants.cc
   sthook_constants.h
+  string_utils.cc
+  string_utils.h
 )
 
 target_link_libraries(base

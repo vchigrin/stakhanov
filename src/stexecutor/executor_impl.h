@@ -8,21 +8,32 @@
 #include <memory>
 #include <string>
 
+#include "base/scoped_handle.h"
 #include "gen-cpp/Executor.h"
+#include "stexecutor/command_info.h"
 
 class DllInjector;
 
 class ExecutorImpl : public ExecutorIf {
  public:
-  explicit ExecutorImpl(std::unique_ptr<DllInjector> dll_injector);
+  explicit ExecutorImpl(DllInjector* dll_injector);
   bool HookedCreateFile(
       const std::string& abs_path, const bool for_writing) override;
   void HookedCloseFile(const std::string& abs_path) override;
-  void OnSuspendedProcessCreated(
-      const int32_t current_pid, const int32_t child_pid) override;
+  void Initialize(
+      const int32_t current_pid,
+      const std::string& command_line,
+      const std::string& startup_directory) override;
+  void OnSuspendedProcessCreated(const int32_t child_pid) override;
+  void FillExitCode();
+  const CommandInfo& command_info() const {
+    return command_info_;
+  }
 
  private:
-  std::unique_ptr<DllInjector> dll_injector_;
+  DllInjector* dll_injector_;
+  CommandInfo command_info_;
+  base::ScopedHandle process_handle_;
 };
 
 #endif  // STEXECUTOR_EXECUTOR_IMPL_H_

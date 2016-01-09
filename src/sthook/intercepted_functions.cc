@@ -10,6 +10,8 @@
 #include <memory>
 #include <string>
 
+#include "base/filesystem_utils.h"
+#include "base/string_utils.h"
 #include "boost/filesystem.hpp"
 #include "gen-cpp/Executor.h"
 #include "log4cplus/logger.h"
@@ -34,6 +36,15 @@ sthook::FunctionsInterceptor* GetInterceptor() {
   return g_interceptor;
 }
 
+void Init(ExecutorIf* executor) {
+  boost::filesystem::path current_path = boost::filesystem::current_path();
+  std::string current_path_utf8 = current_path.string(
+      std::codecvt_utf8_utf16<wchar_t>());
+  std::string command_line_utf8 = base::ToUTF8FromWide(GetCommandLine());
+  executor->Initialize(
+      GetCurrentProcessId(), command_line_utf8, current_path_utf8);
+}
+
 ExecutorIf* GetExecutor() {
   using apache::thrift::TException;
   using apache::thrift::protocol::TBinaryProtocol;
@@ -55,6 +66,8 @@ ExecutorIf* GetExecutor() {
       LOG4CPLUS_FATAL(logger_, "Thrift initialization failure " << ex.what());
       throw;
     }
+    // TODO(vchigrin): Move to DllMain
+    Init(g_executor.get());
   }
   return g_executor.get();
 }
@@ -67,12 +80,7 @@ HANDLE WINAPI NewCreateFileA(
     DWORD creation_disposition,
     DWORD flags_and_attributes,
     HANDLE template_file) {
-  LOG4CPLUS_DEBUG(logger_, "CreateFileA " << file_name);
-  boost::filesystem::path file_path(file_name);
-  boost::filesystem::path abs_path = boost::filesystem::absolute(
-      file_path);
-  std::string abs_path_utf8 = abs_path.string(
-      std::codecvt_utf8_utf16<wchar_t>());
+  std::string abs_path_utf8 = base::AbsPathUTF8(file_name);
   GetExecutor()->HookedCreateFile(
       abs_path_utf8,
       (creation_disposition & GENERIC_WRITE) != 0);
@@ -94,12 +102,7 @@ HANDLE WINAPI NewCreateFileW(
     DWORD creation_disposition,
     DWORD flags_and_attributes,
     HANDLE template_file) {
-  LOG4CPLUS_DEBUG(logger_, "CreateFileW " << file_name);
-  boost::filesystem::path file_path(file_name);
-  boost::filesystem::path abs_path = boost::filesystem::absolute(
-      file_path);
-  std::string abs_path_utf8 = abs_path.string(
-      std::codecvt_utf8_utf16<wchar_t>());
+  std::string abs_path_utf8 = base::AbsPathUTF8(file_name);
   GetExecutor()->HookedCreateFile(
       abs_path_utf8,
       (creation_disposition & GENERIC_WRITE) != 0);
@@ -163,8 +166,7 @@ BOOL CreateProcessImpl(
       process_information);
   if (!result)
     return result;
-  GetExecutor()->OnSuspendedProcessCreated(
-      GetCurrentProcessId(), process_information->dwProcessId);
+  GetExecutor()->OnSuspendedProcessCreated(process_information->dwProcessId);
   if (!request_suspended)
     ResumeThread(process_information->hThread);
   return result;
