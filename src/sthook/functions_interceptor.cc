@@ -68,10 +68,25 @@ FunctionsInterceptor::~FunctionsInterceptor() {
     Unhook();
 }
 
+void FunctionsInterceptor::NewModuleLoaded(HMODULE module) {
+  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  std::unordered_set<HMODULE> modules_to_process = PatchIATAndGetDeps(module);
+  while (!modules_to_process.empty()) {
+    HMODULE next_module = *modules_to_process.begin();
+    modules_to_process.erase(modules_to_process.begin());
+    if (processed_modules_.find(next_module) == processed_modules_.end()) {
+      std::unordered_set<HMODULE> references = PatchIATAndGetDeps(next_module);
+      processed_modules_.insert(next_module);
+      modules_to_process.insert(references.begin(), references.end());
+    }
+  }
+}
+
 bool FunctionsInterceptor::Hook(
     const std::string& intercepted_dll,
     const InterceptedFunctions& intercepts,
     HMODULE excluded_module) {
+  std::unique_lock<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_ASSERT(logger_, !hooked_);
   if (hooked_)
     return false;
@@ -87,7 +102,8 @@ bool FunctionsInterceptor::Hook(
   std::vector<HMODULE> loaded_modules = GetLoadedModules();
   for (HMODULE module : loaded_modules) {
     if (module != excluded_module) {
-      PatchIAT(module);
+      PatchIATAndGetDeps(module);
+      processed_modules_.insert(module);
     }
   }
   return true;
@@ -121,10 +137,11 @@ std::vector<HMODULE> FunctionsInterceptor::GetLoadedModules() {
   return result;
 }
 
-void FunctionsInterceptor::PatchIAT(HMODULE module) {
+std::unordered_set<HMODULE> FunctionsInterceptor::PatchIATAndGetDeps(
+    HMODULE module) {
   if (!hooked_) {
-    LOG4CPLUS_ASSERT(logger_, "Hooks should be installed");
-    return;
+    LOG4CPLUS_ASSERT(logger_, false && "Hooks should be installed");
+    return std::unordered_set<HMODULE>();
   }
   const uint8_t* base_address = reinterpret_cast<const uint8_t*>(module);
   const IMAGE_OPTIONAL_HEADER32* maybe_opt_header_32 =
@@ -133,12 +150,13 @@ void FunctionsInterceptor::PatchIAT(HMODULE module) {
     LOG4CPLUS_WARN(
         logger_,
         "Failed get optional header in module " << std::hex << module);
-    return;
+    return std::unordered_set<HMODULE>();
   }
   const IMAGE_DATA_DIRECTORY* import_data_dir = GetImageDir(
       base_address, maybe_opt_header_32, IMAGE_DIRECTORY_ENTRY_IMPORT);
+  std::unordered_set<HMODULE> result;
   if (import_data_dir) {
-    HookImportDirectory<IMAGE_IMPORT_DESCRIPTOR>(
+    result = HookImportDirectory<IMAGE_IMPORT_DESCRIPTOR>(
         base_address,
         *import_data_dir);
   }
@@ -146,15 +164,17 @@ void FunctionsInterceptor::PatchIAT(HMODULE module) {
       base_address, maybe_opt_header_32, IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT);
 
   if (delay_import_data_dir) {
-    HookImportDirectory<ImgDelayDescr>(
-        base_address,
-        *delay_import_data_dir);
+    std::unordered_set<HMODULE> refernces_modules =
+        HookImportDirectory<ImgDelayDescr>(
+            base_address, *delay_import_data_dir);
+    result.insert(refernces_modules.begin(), refernces_modules.end());
   }
   hooked_ = true;
-  return;
+  return result;
 }
 
 void FunctionsInterceptor::Unhook() {
+  std::unique_lock<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_ASSERT(logger_, hooked_);
   if (!hooked_)
     return;
@@ -254,20 +274,32 @@ const IMAGE_DATA_DIRECTORY* FunctionsInterceptor::GetImageDir(
 
 
 template<typename ImportDescriptorType>
-void FunctionsInterceptor::HookImportDirectory(
+std::unordered_set<HMODULE> FunctionsInterceptor::HookImportDirectory(
     const uint8_t* base_address,
     const IMAGE_DATA_DIRECTORY& import_directory) {
   if (import_directory.VirtualAddress == 0) {
-    return;  // Seems, if module has no imports, this can be 0.
+    // Seems, if module has no imports, this can be 0.
+    return std::unordered_set<HMODULE>();
   }
   const ImportDescriptorType* cur_import_descriptor =
       reinterpret_cast<const ImportDescriptorType*>(
           base_address + import_directory.VirtualAddress);
+  std::unordered_set<HMODULE> result;
   for (; IsValid(cur_import_descriptor); cur_import_descriptor++) {
     const uint8_t* effective_base_address =
         EffectiveBaseAddress(cur_import_descriptor, base_address);
     const char* imported_dll_name = reinterpret_cast<const char*>(
         effective_base_address + DLLNameRVA(cur_import_descriptor));
+    HMODULE imported_module = GetModuleHandleA(imported_dll_name);
+    if (!imported_module) {
+      // May be in case of  DelayLoad dlls
+      imported_module = LoadLibraryA(imported_dll_name);
+    }
+    if (imported_module) {
+      result.insert(imported_module);
+    } else {
+      LOG4CPLUS_ERROR(logger_, "Failed get module " << imported_dll_name);
+    }
     if (_stricmp(imported_dll_name, intercepted_dll_.c_str()) == 0) {
       HookImportDescriptor(
           base_address,
@@ -278,6 +310,7 @@ void FunctionsInterceptor::HookImportDirectory(
                   AddressTableOffset(cur_import_descriptor)));
     }
   }
+  return result;
 }
 
 void FunctionsInterceptor::HookImportDescriptor(

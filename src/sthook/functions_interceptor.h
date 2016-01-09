@@ -8,8 +8,10 @@
 #include <windows.h>
 
 #include <string>
+#include <mutex>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "log4cplus/logger.h"
 
@@ -27,8 +29,8 @@ class FunctionsInterceptor {
             const InterceptedFunctions& intercepts,
             HMODULE excluded_module);
   void Unhook();
-  // Called to patch IAT on newly loaded module.
-  void PatchIAT(HMODULE module);
+  // Called to patch IAT on newly loaded modules.
+  void NewModuleLoaded(HMODULE module);
 
  private:
   struct PatchInformation {
@@ -45,7 +47,7 @@ class FunctionsInterceptor {
       const IMAGE_OPTIONAL_HEADER32* maybe_opt_header_32,
       int directory_entry_idx);
   template<typename ImportDescriptorType>
-  void HookImportDirectory(
+  std::unordered_set<HMODULE> HookImportDirectory(
       const uint8_t* base_address,
       const IMAGE_DATA_DIRECTORY& import_directory);
   void HookImportDescriptor(
@@ -53,12 +55,16 @@ class FunctionsInterceptor {
       const IMAGE_THUNK_DATA* name_table,
       const IMAGE_THUNK_DATA* address_table);
   void Patch(void** dest, void* val, bool remember);
+  // Returns all modules this module references.
+  std::unordered_set<HMODULE> PatchIATAndGetDeps(HMODULE module);
 
   std::string intercepted_dll_;
   InterceptedFunctions intercepts_;
   std::vector<PatchInformation> patches_;
   std::unordered_map<uint32_t, std::string> ordinal_to_name_;
+  std::unordered_set<HMODULE> processed_modules_;
   bool hooked_;
+  std::mutex instance_lock_;
 
   log4cplus::Logger logger_;
 };

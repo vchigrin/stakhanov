@@ -109,18 +109,16 @@ HANDLE WINAPI NewCreateFileW(
 
 HMODULE WINAPI NewLoadLibraryA(LPCSTR file_name) {
   HMODULE result = LoadLibraryA(file_name);
-  LOG4CPLUS_INFO(logger_, "LoadLubraryA " << file_name);
   if (result) {
-    GetInterceptor()->PatchIAT(result);
+    GetInterceptor()->NewModuleLoaded(result);
   }
   return result;
 }
 
 HMODULE WINAPI NewLoadLibraryW(LPCWSTR file_name) {
   HMODULE result = LoadLibraryW(file_name);
-  LOG4CPLUS_INFO(logger_, "LoadLubraryW " << file_name);
   if (result) {
-    GetInterceptor()->PatchIAT(result);
+    GetInterceptor()->NewModuleLoaded(result);
   }
   return result;
 }
