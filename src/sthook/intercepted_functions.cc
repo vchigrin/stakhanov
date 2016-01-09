@@ -36,15 +36,6 @@ sthook::FunctionsInterceptor* GetInterceptor() {
   return g_interceptor;
 }
 
-void Init(ExecutorIf* executor) {
-  boost::filesystem::path current_path = boost::filesystem::current_path();
-  std::string current_path_utf8 = current_path.string(
-      std::codecvt_utf8_utf16<wchar_t>());
-  std::string command_line_utf8 = base::ToUTF8FromWide(GetCommandLine());
-  executor->Initialize(
-      GetCurrentProcessId(), command_line_utf8, current_path_utf8);
-}
-
 ExecutorIf* GetExecutor() {
   using apache::thrift::TException;
   using apache::thrift::protocol::TBinaryProtocol;
@@ -66,8 +57,6 @@ ExecutorIf* GetExecutor() {
       LOG4CPLUS_FATAL(logger_, "Thrift initialization failure " << ex.what());
       throw;
     }
-    // TODO(vchigrin): Move to DllMain
-    Init(g_executor.get());
   }
   return g_executor.get();
 }
@@ -238,6 +227,15 @@ bool InstallHooks(HMODULE current_module) {
   intercepts.insert(std::make_pair("CreateProcessA", &NewCreateProcessA));
   intercepts.insert(std::make_pair("CreateProcessW", &NewCreateProcessW));
   return GetInterceptor()->Hook("kernel32.dll", intercepts, current_module);
+}
+
+void Initialize() {
+  boost::filesystem::path current_path = boost::filesystem::current_path();
+  std::string current_path_utf8 = current_path.string(
+      std::codecvt_utf8_utf16<wchar_t>());
+  std::string command_line_utf8 = base::ToUTF8FromWide(GetCommandLine());
+  GetExecutor()->Initialize(
+      GetCurrentProcessId(), command_line_utf8, current_path_utf8);
 }
 
 }  // namespace sthook

@@ -10,6 +10,7 @@
 namespace sthook {
 
 bool InstallHooks(HMODULE current_module);
+void Initialize();
 
 }  // namespace sthook
 

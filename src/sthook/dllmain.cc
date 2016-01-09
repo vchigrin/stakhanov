@@ -16,6 +16,7 @@ BOOL CALLBACK DllMain(HINSTANCE h_instance, DWORD reason, LPVOID) {
       LOG4CPLUS_ERROR(log4cplus::Logger::getRoot(),
                       "Hook installation failed");
     }
+    sthook::Initialize();
   }
   return TRUE;
 }
