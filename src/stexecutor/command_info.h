@@ -7,14 +7,15 @@
 
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 struct CommandInfo {
   int exit_code;
   int id;
   std::string startup_directory;
   std::string command_line;
-  std::vector<std::string> input_files;
-  std::vector<std::string> output_files;
+  std::unordered_set<std::string> input_files;
+  std::unordered_set<std::string> output_files;
   std::vector<int> child_command_ids;
   std::string result_stdout;
   std::string result_stderr;

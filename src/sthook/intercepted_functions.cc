@@ -80,7 +80,8 @@ HANDLE WINAPI NewCreateFileA(
     DWORD creation_disposition,
     DWORD flags_and_attributes,
     HANDLE template_file) {
-  std::string abs_path_utf8 = base::AbsPathUTF8(file_name);
+  std::string abs_path_utf8 = base::AbsPathUTF8(
+      base::ToLongPathName(std::string(file_name)));
   GetExecutor()->HookedCreateFile(
       abs_path_utf8,
       (desired_access & GENERIC_WRITE) != 0);
@@ -102,7 +103,8 @@ HANDLE WINAPI NewCreateFileW(
     DWORD creation_disposition,
     DWORD flags_and_attributes,
     HANDLE template_file) {
-  std::string abs_path_utf8 = base::AbsPathUTF8(file_name);
+  std::string abs_path_utf8 = base::AbsPathUTF8(
+      base::ToLongPathName(std::wstring(file_name)));
   GetExecutor()->HookedCreateFile(
       abs_path_utf8,
       (desired_access & GENERIC_WRITE) != 0);

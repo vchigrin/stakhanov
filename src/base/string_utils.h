@@ -9,6 +9,8 @@
 
 namespace base {
 std::string ToUTF8FromWide(const std::wstring& wide_string);
+std::wstring ToWideFromUTF8(const std::string& utf8_string);
+std::string UTF8ToLower(const std::string& src);
 }  // namespace base
 
 #endif  // BASE_STRING_UTILS_H_

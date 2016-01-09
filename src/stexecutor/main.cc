@@ -12,6 +12,7 @@
 #include "boost/smart_ptr/make_shared.hpp"
 #include "boost/archive/xml_oarchive.hpp"
 #include "boost/serialization/vector.hpp"
+#include "boost/serialization/unordered_set.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "log4cplus/win32debugappender.h"

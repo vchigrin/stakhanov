@@ -4,6 +4,7 @@
 
 #include "stexecutor/executor_impl.h"
 
+#include "base/string_utils.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "stexecutor/dll_injector.h"
@@ -11,6 +12,21 @@
 namespace {
 
 log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutorImpl");
+
+#ifdef _WINDOWS
+std::string NormalizePath(const std::string& abs_path) {
+  static const char kDontParsePrefix[] = R"(\\?\)";
+  std::string result = abs_path;
+  if (result.find(kDontParsePrefix) == 0) {
+    result = abs_path.substr(strlen(kDontParsePrefix));
+  }
+  // Use consistent delimeters in path - WinAPI seems to support both
+  std::replace(result.begin(), result.end(), '\\', '/');
+  return base::UTF8ToLower(result);
+}
+#else
+#error "This function at present implemented for Windows only"
+#endif
 
 }  // namespace
 
@@ -20,11 +36,11 @@ ExecutorImpl::ExecutorImpl(DllInjector* dll_injector)
 
 bool ExecutorImpl::HookedCreateFile(
     const std::string& abs_path, const bool for_writing) {
-  LOG4CPLUS_INFO(logger_, "Created file " << abs_path.c_str());
+  std::string norm_path = NormalizePath(abs_path);
   if (for_writing)
-    command_info_.output_files.push_back(abs_path);
+    command_info_.output_files.insert(norm_path);
   else
-    command_info_.input_files.push_back(abs_path);
+    command_info_.input_files.insert(norm_path);
   return true;
 }
 
