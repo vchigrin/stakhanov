@@ -83,7 +83,7 @@ HANDLE WINAPI NewCreateFileA(
   std::string abs_path_utf8 = base::AbsPathUTF8(file_name);
   GetExecutor()->HookedCreateFile(
       abs_path_utf8,
-      (creation_disposition & GENERIC_WRITE) != 0);
+      (desired_access & GENERIC_WRITE) != 0);
   return CreateFileA(
       file_name,
       desired_access,
@@ -105,7 +105,7 @@ HANDLE WINAPI NewCreateFileW(
   std::string abs_path_utf8 = base::AbsPathUTF8(file_name);
   GetExecutor()->HookedCreateFile(
       abs_path_utf8,
-      (creation_disposition & GENERIC_WRITE) != 0);
+      (desired_access & GENERIC_WRITE) != 0);
   return CreateFileW(
       file_name,
       desired_access,
