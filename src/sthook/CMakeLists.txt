@@ -44,6 +44,7 @@ target_link_libraries(sthook
   base
   log4cplus
   sthook_communication
+  ntdll.lib
 )
 
 target_compile_definitions(sthook PRIVATE

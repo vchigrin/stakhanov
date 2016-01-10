@@ -5,10 +5,12 @@
 #include "sthook/intercepted_functions.h"
 
 #include <windows.h>
+#include <winternl.h>
 
 #include <codecvt>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "base/filesystem_utils.h"
 #include "base/string_utils.h"
@@ -24,7 +26,34 @@
 
 namespace {
 
+typedef BOOL (WINAPI *LPCREATE_PROCESS_W)(
+    LPCWSTR application_name,
+    LPWSTR command_line,
+    LPSECURITY_ATTRIBUTES process_attributes,
+    LPSECURITY_ATTRIBUTES thread_attributes,
+    BOOL inherit_handles,
+    DWORD creation_flags,
+    LPVOID environment,
+    LPCWSTR current_directory,
+    LPSTARTUPINFOW startup_info,
+    LPPROCESS_INFORMATION process_information);
+
+typedef BOOL (WINAPI *LPCREATE_PROCESS_A)(
+    LPCSTR application_name,
+    LPSTR command_line,
+    LPSECURITY_ATTRIBUTES process_attributes,
+    LPSECURITY_ATTRIBUTES thread_attributes,
+    BOOL inherit_handles,
+    DWORD creation_flags,
+    LPVOID environment,
+    LPCSTR current_directory,
+    LPSTARTUPINFOA startup_info,
+    LPPROCESS_INFORMATION process_information);
+
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
+
+LPCREATE_PROCESS_W g_original_CreateProcessW;
+LPCREATE_PROCESS_A g_original_CreateProcessA;
 
 sthook::FunctionsInterceptor* GetInterceptor() {
   // Will leak, but it seems to be less evil then strange crashes
@@ -43,6 +72,7 @@ ExecutorIf* GetExecutor() {
   using apache::thrift::transport::TSocket;
 
   static std::unique_ptr<ExecutorClient> g_executor;
+  static bool g_initialize_finished;
   if (!g_executor) {
     try {
       boost::shared_ptr<TSocket> socket(new TSocket(
@@ -53,72 +83,89 @@ ExecutorIf* GetExecutor() {
           new TBinaryProtocol(transport));
       g_executor.reset(new ExecutorClient(protocol));
       transport->open();
+      g_initialize_finished = true;
     } catch (TException& ex) {
       LOG4CPLUS_FATAL(logger_, "Thrift initialization failure " << ex.what());
+      g_executor.reset();
       throw;
     }
   }
+  if (!g_initialize_finished)
+    return nullptr;
   return g_executor.get();
 }
 
-HANDLE WINAPI NewCreateFileA(
-    LPCSTR file_name,
-    DWORD desired_access,
-    DWORD share_mode,
-    LPSECURITY_ATTRIBUTES security_attributes,
-    DWORD creation_disposition,
-    DWORD flags_and_attributes,
-    HANDLE template_file) {
-  std::string abs_path_utf8 = base::AbsPathUTF8(
-      base::ToLongPathName(std::string(file_name)));
-  GetExecutor()->HookedCreateFile(
-      abs_path_utf8,
-      (desired_access & GENERIC_WRITE) != 0);
-  return CreateFileA(
-      file_name,
-      desired_access,
-      share_mode,
-      security_attributes,
-      creation_disposition,
-      flags_and_attributes,
-      template_file);
+inline std::wstring StringFromAPIString(const UNICODE_STRING& api_string) {
+  return std::wstring(
+      api_string.Buffer,
+      api_string.Buffer + api_string.Length / sizeof(WCHAR));
 }
 
-HANDLE WINAPI NewCreateFileW(
-    LPCWSTR file_name,
-    DWORD desired_access,
-    DWORD share_mode,
-    LPSECURITY_ATTRIBUTES security_attributes,
-    DWORD creation_disposition,
-    DWORD flags_and_attributes,
-    HANDLE template_file) {
-  std::string abs_path_utf8 = base::AbsPathUTF8(
-      base::ToLongPathName(std::wstring(file_name)));
-  GetExecutor()->HookedCreateFile(
-      abs_path_utf8,
-      (desired_access & GENERIC_WRITE) != 0);
-  return CreateFileW(
-      file_name,
-      desired_access,
-      share_mode,
-      security_attributes,
-      creation_disposition,
-      flags_and_attributes,
-      template_file);
-}
-
-HMODULE WINAPI NewLoadLibraryA(LPCSTR file_name) {
-  HMODULE result = LoadLibraryA(file_name);
-  if (result) {
-    GetInterceptor()->NewModuleLoaded(result);
+NTSTATUS NTAPI NewNtCreateFile(
+    PHANDLE file_handle,
+    ACCESS_MASK desired_access,
+    POBJECT_ATTRIBUTES object_attributes,
+    PIO_STATUS_BLOCK io_status_block,
+    PLARGE_INTEGER allocation_size,
+    ULONG file_attributes,
+    ULONG share_access,
+    ULONG create_disposition,
+    ULONG create_options,
+    PVOID ea_buffer,
+    ULONG ea_length) {
+  if (object_attributes && object_attributes->ObjectName) {
+    ExecutorIf* executor = GetExecutor();
+    if (executor) {
+      // May be if initialization not finished yet. Although we call
+      // Initialize() during DllMain, opening Executor communication
+      // internlally causes NtCreateFile call, so avoid recursion.
+      std::wstring name_str = StringFromAPIString(
+          *object_attributes->ObjectName);
+      static const wchar_t kPossiblePrefix1[] = L"\\??\\";
+      static const wchar_t kPossiblePrefix2[] = L"\\\\?\\";
+      if (name_str.find(kPossiblePrefix1) == 0)
+        name_str = name_str.substr(wcslen(kPossiblePrefix1));
+      if (name_str.find(kPossiblePrefix2) == 0)
+        name_str = name_str.substr(wcslen(kPossiblePrefix2));
+      std::string abs_path_utf8 = base::AbsPathUTF8(
+          base::ToLongPathName(name_str));
+      executor->HookedCreateFile(
+          abs_path_utf8,
+          (desired_access & GENERIC_WRITE) != 0);
+    }
   }
-  return result;
+  return NtCreateFile(
+      file_handle,
+      desired_access,
+      object_attributes,
+      io_status_block,
+      allocation_size,
+      file_attributes,
+      share_access,
+      create_disposition,
+      create_options,
+      ea_buffer,
+      ea_length);
 }
 
-HMODULE WINAPI NewLoadLibraryW(LPCWSTR file_name) {
-  HMODULE result = LoadLibraryW(file_name);
-  if (result) {
-    GetInterceptor()->NewModuleLoaded(result);
+extern "C" __kernel_entry NTSTATUS NTAPI LdrLoadDll(
+    PWCHAR path_to_file,
+    ULONG* flags,
+    PUNICODE_STRING module_file_name,
+    PHANDLE module_handle);
+
+NTSTATUS NTAPI NewLdrLoadDll(
+    PWCHAR path_to_file,
+    ULONG* flags,
+    PUNICODE_STRING module_file_name,
+    PHANDLE module_handle) {
+  NTSTATUS result = LdrLoadDll(
+      path_to_file,
+      flags,
+      module_file_name,
+      module_handle);
+  if (module_handle && *module_handle) {
+    GetInterceptor()->NewModuleLoaded(static_cast<HMODULE>(*module_handle));
   }
   return result;
 }
@@ -174,7 +221,7 @@ BOOL WINAPI NewCreateProcessA(
     LPSTARTUPINFOA startup_info,
     LPPROCESS_INFORMATION process_information) {
   return CreateProcessImpl(
-      &CreateProcessA,
+      g_original_CreateProcessA,
       application_name,
       command_line,
       process_attributes,
@@ -199,7 +246,7 @@ BOOL WINAPI NewCreateProcessW(
     LPSTARTUPINFOW startup_info,
     LPPROCESS_INFORMATION process_information) {
   return CreateProcessImpl(
-      &CreateProcessW,
+      g_original_CreateProcessW,
       application_name,
       command_line,
       process_attributes,
@@ -217,14 +264,45 @@ BOOL WINAPI NewCreateProcessW(
 namespace sthook {
 
 bool InstallHooks(HMODULE current_module) {
-  std::unordered_map<std::string, void*> intercepts;
-  intercepts.insert(std::make_pair("CreateFileA", &NewCreateFileA));
-  intercepts.insert(std::make_pair("CreateFileW", &NewCreateFileW));
-  intercepts.insert(std::make_pair("LoadLibraryA", &NewLoadLibraryA));
-  intercepts.insert(std::make_pair("LoadLibraryW", &NewLoadLibraryW));
-  intercepts.insert(std::make_pair("CreateProcessA", &NewCreateProcessA));
-  intercepts.insert(std::make_pair("CreateProcessW", &NewCreateProcessW));
-  return GetInterceptor()->Hook("kernel32.dll", intercepts, current_module);
+  FunctionsInterceptor::DllInterceptedFunctions ntdll_intercepts;
+  // Intercepted either from kernelbase.dll on system that has it or
+  // from kernel32.dll on older systems. We must hook kernelbase since some
+  // processes link directly with it, skipping kernel32.dll (e.g. cmd.exe).
+  FunctionsInterceptor::DllInterceptedFunctions kernel_intercepts;
+  ntdll_intercepts.insert(std::make_pair("NtCreateFile", &NewNtCreateFile));
+  ntdll_intercepts.insert(std::make_pair("LdrLoadDll", &NewLdrLoadDll));
+  kernel_intercepts.insert(
+      std::make_pair("CreateProcessA", &NewCreateProcessA));
+  kernel_intercepts.insert(
+      std::make_pair("CreateProcessW", &NewCreateProcessW));
+  FunctionsInterceptor::Intercepts intercepts;
+  intercepts.insert(
+      std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
+          "ntdll.dll", ntdll_intercepts));
+  HMODULE kernel_module = GetModuleHandleA("kernelbase.dll");
+  if (kernel_module) {
+    intercepts.insert(
+        std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
+            "kernelbase.dll", kernel_intercepts));
+    // TODO(vchigrin): Study problem with possible different versions
+    // of interface DLL.
+    intercepts.insert(
+        std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
+            "api-ms-win-core-processthreads-l1-1-2.dll", kernel_intercepts));
+  } else {
+    intercepts.insert(
+        std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
+            "kernel32.dll", kernel_intercepts));
+    kernel_module = GetModuleHandleA("kernel32.dll");
+  }
+  LOG4CPLUS_ASSERT(logger_, kernel_module);
+  g_original_CreateProcessW = reinterpret_cast<LPCREATE_PROCESS_W>(
+      GetProcAddress(kernel_module, "CreateProcessW"));
+  g_original_CreateProcessA = reinterpret_cast<LPCREATE_PROCESS_A>(
+      GetProcAddress(kernel_module, "CreateProcessA"));
+  LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
+  LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
+  return GetInterceptor()->Hook(intercepts, current_module);
 }
 
 void Initialize() {

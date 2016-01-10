@@ -15,11 +15,7 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutorImpl");
 
 #ifdef _WINDOWS
 std::string NormalizePath(const std::string& abs_path) {
-  static const char kDontParsePrefix[] = R"(\\?\)";
   std::string result = abs_path;
-  if (result.find(kDontParsePrefix) == 0) {
-    result = abs_path.substr(strlen(kDontParsePrefix));
-  }
   // Use consistent delimeters in path - WinAPI seems to support both
   std::replace(result.begin(), result.end(), '\\', '/');
   return base::UTF8ToLower(result);

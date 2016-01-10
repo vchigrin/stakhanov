@@ -22,17 +22,19 @@ namespace sthook {
 class FunctionsInterceptor {
  public:
   // Map from function name in intercepted_dll to new address.
-  typedef std::unordered_map<std::string, void*> InterceptedFunctions;
+  using DllInterceptedFunctions = std::unordered_map<std::string, void*>;
+  using Intercepts = std::unordered_map<std::string, DllInterceptedFunctions>;
   FunctionsInterceptor();
   ~FunctionsInterceptor();
-  bool Hook(const std::string& intercepted_dll,
-            const InterceptedFunctions& intercepts,
-            HMODULE excluded_module);
+  // NOTE: dll names must be lower case.
+  bool Hook(const Intercepts& intercepts, HMODULE excluded_module);
   void Unhook();
   // Called to patch IAT on newly loaded modules.
   void NewModuleLoaded(HMODULE module);
 
  private:
+  using OrdinalToName = std::unordered_map<uint32_t, std::string>;
+  using DllToOrdinals = std::unordered_map<std::string, OrdinalToName>;
   struct PatchInformation {
     void** patched_address;
     void* old_value;
@@ -40,7 +42,7 @@ class FunctionsInterceptor {
   };
 
   std::vector<HMODULE> GetLoadedModules();
-  void FillOrdinalToName(HMODULE module);
+  void FillOrdinalToName(HMODULE module, OrdinalToName* ordinal_to_name);
   const IMAGE_OPTIONAL_HEADER32* GetPEOptionalHeader(const uint8_t* image_base);
   const IMAGE_DATA_DIRECTORY* GetImageDir(
       const uint8_t* image_base,
@@ -53,15 +55,16 @@ class FunctionsInterceptor {
   void HookImportDescriptor(
       const uint8_t* base_address,
       const IMAGE_THUNK_DATA* name_table,
-      const IMAGE_THUNK_DATA* address_table);
+      const IMAGE_THUNK_DATA* address_table,
+      const OrdinalToName& ordinal_to_name,
+      const DllInterceptedFunctions& dll_intercepted_functions);
   void Patch(void** dest, void* val, bool remember);
   // Returns all modules this module references.
   std::unordered_set<HMODULE> PatchIATAndGetDeps(HMODULE module);
 
-  std::string intercepted_dll_;
-  InterceptedFunctions intercepts_;
+  Intercepts intercepts_;
   std::vector<PatchInformation> patches_;
-  std::unordered_map<uint32_t, std::string> ordinal_to_name_;
+  DllToOrdinals dll_to_ordinals_;
   std::unordered_set<HMODULE> processed_modules_;
   bool hooked_;
   std::mutex instance_lock_;

@@ -28,5 +28,14 @@ std::string UTF8ToLower(const std::string& src) {
   return ToUTF8FromWide(wide_str);
 }
 
+std::string ASCIIToLower(const std::string& src) {
+  std::locale c_locale;
+  std::string result = src;
+  for (auto& symbol : result) {
+    symbol = std::tolower(symbol, c_locale);
+  }
+  return result;
+}
+
 }  // namespace base
 
