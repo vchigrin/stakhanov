@@ -15,6 +15,13 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutorImpl");
 
 #ifdef _WINDOWS
 std::string NormalizePath(const std::string& abs_path) {
+  if (abs_path.find(':') == std::string::npos) {
+    // Passed in path are always absolute. If it does not contain column,
+    // than usually means that this is reserved file name lie "con", "nul",
+    // or some pipe name. Just ignore them.
+    LOG4CPLUS_INFO(logger_, "Invalid special path " << abs_path.c_str());
+    return std::string();
+  }
   std::string result = abs_path;
   // Use consistent delimeters in path - WinAPI seems to support both
   std::replace(result.begin(), result.end(), '\\', '/');
@@ -33,6 +40,9 @@ ExecutorImpl::ExecutorImpl(DllInjector* dll_injector)
 bool ExecutorImpl::HookedCreateFile(
     const std::string& abs_path, const bool for_writing) {
   std::string norm_path = NormalizePath(abs_path);
+  if (norm_path.empty()) {  // May be if path is "invalid" for intercept
+    return true;
+  }
   if (for_writing)
     command_info_.output_files.insert(norm_path);
   else
