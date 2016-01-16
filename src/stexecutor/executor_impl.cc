@@ -50,10 +50,6 @@ bool ExecutorImpl::HookedCreateFile(
   return true;
 }
 
-void ExecutorImpl::HookedCloseFile(const std::string& abs_path) {
-  LOG4CPLUS_INFO(logger_, "Closed file " << abs_path.c_str());
-}
-
 void ExecutorImpl::Initialize(
     const int32_t current_pid,
     const std::string& command_line,
@@ -76,6 +72,14 @@ void ExecutorImpl::OnSuspendedProcessCreated(const int32_t child_pid) {
     LOG4CPLUS_ERROR(logger_, "Failed inject dll into process " << child_pid);
   }
   command_info_.child_command_ids.push_back(child_pid);
+}
+
+void ExecutorImpl::PushStdOutput(
+    const StdHandles::type handle, const std::string& data) {
+  if (handle == StdHandles::StdOutput)
+    command_info_.result_stdout += data;
+  else
+    command_info_.result_stderr += data;
 }
 
 void ExecutorImpl::FillExitCode() {

@@ -50,10 +50,36 @@ typedef BOOL (WINAPI *LPCREATE_PROCESS_A)(
     LPSTARTUPINFOA startup_info,
     LPPROCESS_INFORMATION process_information);
 
+typedef BOOL (WINAPI *LPWRITE_FILE)(
+    HANDLE file,
+    LPCVOID buffer,
+    DWORD number_of_bytes_to_write,
+    LPDWORD number_of_bytes_written,
+    LPOVERLAPPED overlapped
+);
+
+typedef BOOL (WINAPI *LPWRITE_FILE_EX)(
+    HANDLE file,
+    LPCVOID buffer,
+    DWORD number_of_bytes_to_write,
+    LPOVERLAPPED overlapped,
+    LPOVERLAPPED_COMPLETION_ROUTINE completion_routine
+);
+
+typedef BOOL (WINAPI *LPSET_STD_HANDLE)(
+    DWORD handle_id,
+    HANDLE handle
+);
+
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
 LPCREATE_PROCESS_W g_original_CreateProcessW;
 LPCREATE_PROCESS_A g_original_CreateProcessA;
+LPWRITE_FILE g_original_WriteFile;
+LPWRITE_FILE_EX g_original_WriteFileEx;
+LPSET_STD_HANDLE g_original_SetStdHandle;
+HANDLE g_stdout;
+HANDLE g_stderr;
 
 sthook::FunctionsInterceptor* GetInterceptor() {
   // Will leak, but it seems to be less evil then strange crashes
@@ -267,6 +293,63 @@ BOOL WINAPI NewCreateProcessW(
       process_information);
 }
 
+BOOL WINAPI NewWriteFile(
+    HANDLE file,
+    LPCVOID buffer,
+    DWORD number_of_bytes_to_write,
+    LPDWORD number_of_bytes_written,
+    LPOVERLAPPED overlapped) {
+  if (file == g_stdout || file == g_stderr) {
+    std::string data(
+        static_cast<const char*>(buffer),
+        number_of_bytes_to_write);
+    GetExecutor()->PushStdOutput(
+        file == g_stdout ? StdHandles::StdOutput : StdHandles::StdError,
+        data);
+  }
+  return g_original_WriteFile(
+      file,
+      buffer,
+      number_of_bytes_to_write,
+      number_of_bytes_written,
+      overlapped);
+}
+
+BOOL WINAPI NewWriteFileEx(
+    HANDLE file,
+    LPCVOID buffer,
+    DWORD number_of_bytes_to_write,
+    LPOVERLAPPED overlapped,
+    LPOVERLAPPED_COMPLETION_ROUTINE completion_routine) {
+  if (file == g_stdout || file == g_stderr) {
+    std::string data(
+        static_cast<const char*>(buffer),
+        number_of_bytes_to_write);
+    GetExecutor()->PushStdOutput(
+        file == g_stdout ? StdHandles::StdOutput : StdHandles::StdError,
+        data);
+  }
+  return g_original_WriteFileEx(
+      file,
+      buffer,
+      number_of_bytes_to_write,
+      overlapped,
+      completion_routine);
+}
+
+BOOL WINAPI NewSetStdHandle(
+    DWORD handle_id,
+    HANDLE handle_val) {
+  BOOL result = g_original_SetStdHandle(handle_id, handle_val);
+  if (result) {
+    if (handle_id == STD_OUTPUT_HANDLE)
+      g_stdout = handle_val;
+    if (handle_id == STD_ERROR_HANDLE)
+      g_stderr = handle_val;
+  }
+  return result;
+}
+
 }  // namespace
 
 namespace sthook {
@@ -283,6 +366,12 @@ bool InstallHooks(HMODULE current_module) {
       std::make_pair("CreateProcessA", &NewCreateProcessA));
   kernel_intercepts.insert(
       std::make_pair("CreateProcessW", &NewCreateProcessW));
+  kernel_intercepts.insert(
+      std::make_pair("WriteFile", &NewWriteFile));
+  kernel_intercepts.insert(
+      std::make_pair("WriteFileEx", &NewWriteFileEx));
+  kernel_intercepts.insert(
+      std::make_pair("SetStdHandle", &NewSetStdHandle));
   FunctionsInterceptor::Intercepts intercepts;
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
@@ -303,8 +392,17 @@ bool InstallHooks(HMODULE current_module) {
       GetProcAddress(kernel_module, "CreateProcessW"));
   g_original_CreateProcessA = reinterpret_cast<LPCREATE_PROCESS_A>(
       GetProcAddress(kernel_module, "CreateProcessA"));
+  g_original_WriteFile = reinterpret_cast<LPWRITE_FILE>(
+      GetProcAddress(kernel_module, "WriteFile"));
+  g_original_WriteFileEx = reinterpret_cast<LPWRITE_FILE_EX>(
+      GetProcAddress(kernel_module, "WriteFileEx"));
+  g_original_SetStdHandle = reinterpret_cast<LPSET_STD_HANDLE>(
+      GetProcAddress(kernel_module, "SetStdHandle"));
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
+  LOG4CPLUS_ASSERT(logger_, g_original_WriteFile);
+  LOG4CPLUS_ASSERT(logger_, g_original_WriteFileEx);
+  LOG4CPLUS_ASSERT(logger_, g_original_SetStdHandle);
   return GetInterceptor()->Hook(intercepts, current_module);
 }
 
@@ -315,6 +413,10 @@ void Initialize() {
   std::string command_line_utf8 = base::ToUTF8FromWide(GetCommandLine());
   GetExecutor()->Initialize(
       GetCurrentProcessId(), command_line_utf8, current_path_utf8);
+  g_stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+  g_stderr = GetStdHandle(STD_ERROR_HANDLE);
+  LOG4CPLUS_ASSERT(logger_, g_stdout);
+  LOG4CPLUS_ASSERT(logger_, g_stderr);
 }
 
 }  // namespace sthook

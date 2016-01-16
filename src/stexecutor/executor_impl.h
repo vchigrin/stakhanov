@@ -17,13 +17,14 @@ class DllInjector;
 class ExecutorImpl : public ExecutorIf {
  public:
   explicit ExecutorImpl(DllInjector* dll_injector);
-  bool HookedCreateFile(
-      const std::string& abs_path, const bool for_writing) override;
-  void HookedCloseFile(const std::string& abs_path) override;
   void Initialize(
       const int32_t current_pid,
       const std::string& command_line,
       const std::string& startup_directory) override;
+  bool HookedCreateFile(
+      const std::string& abs_path, const bool for_writing) override;
+  void PushStdOutput(
+      const StdHandles::type handle, const std::string& data) override;
   void OnSuspendedProcessCreated(const int32_t child_pid) override;
   void FillExitCode();
   const CommandInfo& command_info() const {
