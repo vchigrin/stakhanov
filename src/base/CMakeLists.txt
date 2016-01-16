@@ -5,6 +5,8 @@
 add_library(base STATIC
   filesystem_utils.cc
   filesystem_utils.h
+  filesystem_utils_win.cc
+  filesystem_utils_win.h
   init_logging.cc
   init_logging.h
   sthook_constants.cc

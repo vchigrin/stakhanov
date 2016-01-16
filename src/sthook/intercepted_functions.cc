@@ -5,7 +5,6 @@
 #include "sthook/intercepted_functions.h"
 
 #include <windows.h>
-#include <winternl.h>
 
 #include <codecvt>
 #include <memory>
@@ -14,6 +13,7 @@
 
 #include "base/filesystem_utils.h"
 #include "base/string_utils.h"
+#include "base/filesystem_utils_win.h"
 #include "boost/filesystem.hpp"
 #include "gen-cpp/Executor.h"
 #include "log4cplus/logger.h"
@@ -95,11 +95,6 @@ ExecutorIf* GetExecutor() {
   return g_executor.get();
 }
 
-inline std::wstring StringFromAPIString(const UNICODE_STRING& api_string) {
-  return std::wstring(
-      api_string.Buffer,
-      api_string.Buffer + api_string.Length / sizeof(WCHAR));
-}
 
 NTSTATUS NTAPI NewNtCreateFile(
     PHANDLE file_handle,
@@ -119,19 +114,32 @@ NTSTATUS NTAPI NewNtCreateFile(
       // May be if initialization not finished yet. Although we call
       // Initialize() during DllMain, opening Executor communication
       // internlally causes NtCreateFile call, so avoid recursion.
-      std::wstring name_str = StringFromAPIString(
+      std::wstring name_str = base::StringFromAPIString(
           *object_attributes->ObjectName);
       static const wchar_t kPossiblePrefix1[] = L"\\??\\";
       static const wchar_t kPossiblePrefix2[] = L"\\\\?\\";
+      if (object_attributes->RootDirectory) {
+        std::wstring dir_path = base::GetFilePathFromHandle(
+            object_attributes->RootDirectory);
+        if (dir_path[dir_path.length() - 1] != L'\\')
+          dir_path += L"\\";
+        name_str = dir_path + name_str;
+      }
       if (name_str.find(kPossiblePrefix1) == 0)
         name_str = name_str.substr(wcslen(kPossiblePrefix1));
       if (name_str.find(kPossiblePrefix2) == 0)
         name_str = name_str.substr(wcslen(kPossiblePrefix2));
-      std::string abs_path_utf8 = base::AbsPathUTF8(
-          base::ToLongPathName(name_str));
-      executor->HookedCreateFile(
-          abs_path_utf8,
-          (desired_access & GENERIC_WRITE) != 0);
+      if (name_str[name_str.length() - 1] == L'\\')
+        name_str = name_str.substr(0, name_str.length() - 1);
+      name_str = base::ToLongPathName(name_str);
+      boost::filesystem::path boost_path(name_str);
+      if (!boost::filesystem::is_directory(boost_path)) {
+        // Don't care about directories.
+        std::string abs_path_utf8 = base::ToUTF8FromWide(name_str);
+        executor->HookedCreateFile(
+            abs_path_utf8,
+            (desired_access & GENERIC_WRITE) != 0);
+      }
     }
   }
   return NtCreateFile(
