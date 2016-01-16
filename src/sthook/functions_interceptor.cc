@@ -91,15 +91,24 @@ bool FunctionsInterceptor::Hook(
   if (hooked_)
     return false;
   intercepts_ = intercepts;
-  for (const auto& item : intercepts) {
-    HMODULE intercepted_module = GetModuleHandleA(item.first.c_str());
-    if (!intercepted_module) {
+  for (const auto& intercepted_module : intercepts) {
+    HMODULE module_handle = GetModuleHandleA(
+        intercepted_module.first.c_str());
+    if (!module_handle) {
       LOG4CPLUS_ERROR(logger_, "Intercepted module not loaded ");
       return false;
     }
-    OrdinalToName ordinal_to_name;
-    FillOrdinalToName(intercepted_module, &ordinal_to_name);
-    dll_to_ordinals_.insert(std::make_pair(item.first, ordinal_to_name));
+    for (const auto& intercepted_function : intercepted_module.second) {
+      void* src_addr = GetProcAddress(
+          module_handle, intercepted_function.first.c_str());
+      if (src_addr) {
+        functions_replacements_[src_addr] = intercepted_function.second;
+      } else {
+        LOG4CPLUS_ERROR(
+            logger_,
+            "Failed get addr. of  " << intercepted_function.first.c_str());
+      }
+    }
   }
   hooked_ = true;
   std::vector<HMODULE> loaded_modules = GetLoadedModules();
@@ -193,39 +202,6 @@ void FunctionsInterceptor::Unhook() {
   hooked_ = false;
 }
 
-void FunctionsInterceptor::FillOrdinalToName(
-    HMODULE module, OrdinalToName* ordinal_to_name) {
-  ordinal_to_name->clear();
-  const uint8_t* base_address = reinterpret_cast<const uint8_t*>(module);
-  const IMAGE_OPTIONAL_HEADER32* maybe_opt_header_32 =
-      GetPEOptionalHeader(base_address);
-  const IMAGE_DATA_DIRECTORY* export_data_dir = GetImageDir(
-      base_address, maybe_opt_header_32, IMAGE_DIRECTORY_ENTRY_EXPORT);
-  if (!export_data_dir) {
-    LOG4CPLUS_ERROR(logger_, _T("Hooked module has no exports"));
-    return;
-  }
-  const IMAGE_EXPORT_DIRECTORY* export_dir =
-      reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(
-          base_address + export_data_dir->VirtualAddress);
-  const uint32_t* name_pointer_table = reinterpret_cast<const uint32_t*>(
-      base_address + export_dir->AddressOfNames);
-  const uint16_t* ordinal_table = reinterpret_cast<const uint16_t*>(
-      base_address + export_dir->AddressOfNameOrdinals);
-  const uint32_t* address_table = reinterpret_cast<const uint32_t*>(
-      base_address + export_dir->AddressOfFunctions);
-  for (uint32_t i = 0; i < export_dir->NumberOfNames; i++) {
-    std::string function_name = reinterpret_cast<const char*>(
-        base_address + name_pointer_table[i]);
-    uint16_t ordinal_value = ordinal_table[i];
-    // No point in patching EAT. It contains 32-bit RVAs, and it may not
-    // be enough to produce correct address of hooked function on 64-bit
-    // systems.
-    ordinal_to_name->insert(
-        std::make_pair(ordinal_value + export_dir->Base, function_name));
-  }
-}
-
 const IMAGE_OPTIONAL_HEADER32* FunctionsInterceptor::GetPEOptionalHeader(
     const uint8_t* image_base) {
   const IMAGE_DOS_HEADER* dos_header =
@@ -303,19 +279,13 @@ std::unordered_set<HMODULE> FunctionsInterceptor::HookImportDirectory(
     if (imported_module) {
       result.insert(imported_module);
     }
-    std::string normalized_dll_name = base::ASCIIToLower(imported_dll_name);
-    Intercepts::iterator it = intercepts_.find(normalized_dll_name);
-    if (it != intercepts_.end()) {
-      HookImportDescriptor(
-          base_address,
-          reinterpret_cast<const IMAGE_THUNK_DATA*>(
-              effective_base_address + NameTableOffset(cur_import_descriptor)),
-          reinterpret_cast<const IMAGE_THUNK_DATA*>(
-              effective_base_address +
-                  AddressTableOffset(cur_import_descriptor)),
-          dll_to_ordinals_[normalized_dll_name],
-          it->second);
-    }
+    HookImportDescriptor(
+        base_address,
+        reinterpret_cast<const IMAGE_THUNK_DATA*>(
+            effective_base_address + NameTableOffset(cur_import_descriptor)),
+        reinterpret_cast<const IMAGE_THUNK_DATA*>(
+            effective_base_address +
+                AddressTableOffset(cur_import_descriptor)));
   }
   return result;
 }
@@ -323,24 +293,14 @@ std::unordered_set<HMODULE> FunctionsInterceptor::HookImportDirectory(
 void FunctionsInterceptor::HookImportDescriptor(
     const uint8_t* base_address,
     const IMAGE_THUNK_DATA* name_table,
-    const IMAGE_THUNK_DATA* address_table,
-    const OrdinalToName& ordinal_to_name,
-    const DllInterceptedFunctions& dll_intercepted_functions) {
+    const IMAGE_THUNK_DATA* address_table) {
   const IMAGE_THUNK_DATA* name_entry = name_table;
   const IMAGE_THUNK_DATA* address_entry = address_table;
   for (; name_entry->u1.Ordinal != 0; name_entry++, address_entry++) {
-    std::string function_name;
-    if (IMAGE_ORDINAL_FLAG & name_entry->u1.Ordinal) {
-      auto it = ordinal_to_name.find(IMAGE_ORDINAL(name_entry->u1.Ordinal));
-      if (it != ordinal_to_name.end())
-        function_name = it->second;
-    } else {
-      // 2 for Hint field
-      function_name = reinterpret_cast<const char*>(
-          base_address + name_entry->u1.AddressOfData + 2);
-    }
-    const auto it_function = dll_intercepted_functions.find(function_name);
-    if (it_function != dll_intercepted_functions.end()) {
+    const auto it_function = functions_replacements_.find(
+        reinterpret_cast<void*>(
+            address_entry->u1.AddressOfData));
+    if (it_function != functions_replacements_.end()) {
       Patch(
           reinterpret_cast<void**>(
               &const_cast<IMAGE_THUNK_DATA*>(address_entry)->u1.AddressOfData),

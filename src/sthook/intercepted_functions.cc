@@ -292,11 +292,6 @@ bool InstallHooks(HMODULE current_module) {
     intercepts.insert(
         std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
             "kernelbase.dll", kernel_intercepts));
-    // TODO(vchigrin): Study problem with possible different versions
-    // of interface DLL.
-    intercepts.insert(
-        std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
-            "api-ms-win-core-processthreads-l1-1-2.dll", kernel_intercepts));
   } else {
     intercepts.insert(
         std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(

@@ -33,8 +33,6 @@ class FunctionsInterceptor {
   void NewModuleLoaded(HMODULE module);
 
  private:
-  using OrdinalToName = std::unordered_map<uint32_t, std::string>;
-  using DllToOrdinals = std::unordered_map<std::string, OrdinalToName>;
   struct PatchInformation {
     void** patched_address;
     void* old_value;
@@ -42,7 +40,6 @@ class FunctionsInterceptor {
   };
 
   std::vector<HMODULE> GetLoadedModules();
-  void FillOrdinalToName(HMODULE module, OrdinalToName* ordinal_to_name);
   const IMAGE_OPTIONAL_HEADER32* GetPEOptionalHeader(const uint8_t* image_base);
   const IMAGE_DATA_DIRECTORY* GetImageDir(
       const uint8_t* image_base,
@@ -55,17 +52,15 @@ class FunctionsInterceptor {
   void HookImportDescriptor(
       const uint8_t* base_address,
       const IMAGE_THUNK_DATA* name_table,
-      const IMAGE_THUNK_DATA* address_table,
-      const OrdinalToName& ordinal_to_name,
-      const DllInterceptedFunctions& dll_intercepted_functions);
+      const IMAGE_THUNK_DATA* address_table);
   void Patch(void** dest, void* val, bool remember);
   // Returns all modules this module references.
   std::unordered_set<HMODULE> PatchIATAndGetDeps(HMODULE module);
 
   Intercepts intercepts_;
   std::vector<PatchInformation> patches_;
-  DllToOrdinals dll_to_ordinals_;
   std::unordered_set<HMODULE> processed_modules_;
+  std::unordered_map<void*, void*> functions_replacements_;
   bool hooked_;
   std::mutex instance_lock_;
 
