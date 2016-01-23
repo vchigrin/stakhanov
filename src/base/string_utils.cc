@@ -7,6 +7,15 @@
 #include <codecvt>
 #include <locale>
 
+#include <windows.h>
+
+#include "log4cplus/logger.h"
+#include "log4cplus/loggingmacros.h"
+
+namespace {
+log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"PathFromHandle");
+}  // nnamespace
+
 namespace base {
 
 std::string ToUTF8FromWide(const std::wstring& wide_string) {
@@ -17,6 +26,41 @@ std::string ToUTF8FromWide(const std::wstring& wide_string) {
 std::wstring ToWideFromUTF8(const std::string& utf8_string) {
   std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t> cv;
   return cv.from_bytes(utf8_string);
+}
+
+std::wstring ToWideFromANSI(const std::string& ansi_string) {
+  if (ansi_string.empty())
+    return std::wstring();
+  int required_size = MultiByteToWideChar(
+      CP_ACP,
+      0,
+      ansi_string.c_str(),
+      -1,
+      NULL,
+      0);
+  if (required_size == 0) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "MultiByteToWideChar failed, error " << error);
+    return std::wstring();
+  }
+  std::vector<wchar_t> buffer(required_size + 1);
+  int result = MultiByteToWideChar(
+      CP_ACP,
+      0,
+      ansi_string.c_str(),
+      -1,
+      &buffer[0],
+      buffer.size());
+  if (result == 0) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "MultiByteToWideChar failed, error " << error);
+    return std::wstring();
+  }
+  return std::wstring(&buffer[0]);
+}
+
+std::string ToUTF8FromANSI(const std::string& ansi_string) {
+  return ToUTF8FromWide(ToWideFromANSI(ansi_string));
 }
 
 std::string UTF8ToLower(const std::string& src) {

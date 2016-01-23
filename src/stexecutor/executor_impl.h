@@ -25,6 +25,10 @@ class ExecutorImpl : public ExecutorIf {
       const std::string& abs_path, const bool for_writing) override;
   void PushStdOutput(
       const StdHandles::type handle, const std::string& data) override;
+  void OnBeforeProcessCreate(
+      const std::string& exe_path,
+      const std::vector<std::string>& arguments,
+      const std::string& startup_dir) override;
   void OnSuspendedProcessCreated(const int32_t child_pid) override;
   void FillExitCode();
   const CommandInfo& command_info() const {

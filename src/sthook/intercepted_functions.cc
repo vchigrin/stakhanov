@@ -204,6 +204,40 @@ NTSTATUS NTAPI NewLdrLoadDll(
   return result;
 }
 
+std::vector<std::wstring> SplitCommandLineWide(const wchar_t* command_line) {
+  // TODO(vchigrin): May be it worth to use some undocumented
+  // functions from Visual C++ CRT to avoid dependency from shell32.dll
+  int argc = 0;
+  WCHAR** argv = CommandLineToArgvW(command_line, &argc);
+  if (!argv) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "CommandLineToArgv fails, error " << error);
+    return std::vector<std::wstring>();
+  }
+  std::vector<std::wstring> result;
+  result.reserve(argc);
+  for (int i = 0; i < argc; ++i) {
+    result.push_back(argv[i]);
+  }
+  LocalFree(argv);
+  return result;
+}
+
+template<typename CHAR_TYPE>
+std::vector<std::wstring> SplitCommandLine(
+    const CHAR_TYPE* command_line);
+
+std::vector<std::wstring> SplitCommandLine(const wchar_t* command_line) {
+  return SplitCommandLineWide(command_line);
+}
+
+std::vector<std::wstring> SplitCommandLine(const char* command_line) {
+  // TODO(vchigrin): This is terribly inefficient shit-code since uses a LOT
+  // of encoding convertions.
+  std::wstring command_line_wide = base::ToWideFromANSI(command_line);
+  return SplitCommandLineWide(command_line_wide.c_str());
+}
+
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
 BOOL CreateProcessImpl(
     FUNCTION actual_function,
@@ -217,12 +251,43 @@ BOOL CreateProcessImpl(
     const CHAR_TYPE* current_directory,
     STARTUPINFO_TYPE* startup_info,
     LPPROCESS_INFORMATION process_information) {
-  const CHAR_TYPE* log_info = command_line ? command_line : application_name;
-  if (log_info) {
-    LOG4CPLUS_INFO(logger_, L"CreateProcess " << log_info);
-  }
   bool request_suspended = (creation_flags & CREATE_SUSPENDED) != 0;
   creation_flags |= CREATE_SUSPENDED;
+
+  std::string exe_path;
+  if (application_name) {
+    exe_path = base::AbsPathUTF8(
+        std::basic_string<CHAR_TYPE>(application_name));
+  }
+  std::vector<std::string> arguments_utf8;
+  if (command_line) {
+    std::vector<std::wstring> arguments = SplitCommandLine(command_line);
+    for (const std::wstring& argument: arguments) {
+      // TODO(vchigrin): Is it OK to convert everything to long path?
+      std::wstring native_long_path = base::ToLongPathName(argument);
+      arguments_utf8.push_back(base::ToUTF8FromWide(native_long_path));
+    }
+  }
+  if (exe_path.empty() && !arguments_utf8.empty())
+    exe_path = arguments_utf8[0];
+  std::string startup_dir_utf8;
+  if (current_directory) {
+    startup_dir_utf8 = base::ToUTF8(
+        base::ToLongPathName(std::basic_string<CHAR_TYPE>(current_directory)));
+  } else {
+    boost::filesystem::path current_dir = boost::filesystem::current_path();
+    startup_dir_utf8 = base::ToUTF8FromWide(current_dir.wstring());
+  }
+
+  // TODO(vchigrin): Pass environment
+  // TODO(vchigrin): Analyze in executor, if we can use cached
+  // results of this invokation, create some dummy process driver
+  // instead of actual process creation.
+  GetExecutor()->OnBeforeProcessCreate(
+      exe_path,
+      arguments_utf8,
+      startup_dir_utf8);
+
   BOOL result = actual_function(
       application_name,
       command_line,
