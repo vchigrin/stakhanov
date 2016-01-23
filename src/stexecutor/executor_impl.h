@@ -11,7 +11,7 @@
 
 #include "base/scoped_handle.h"
 #include "gen-cpp/Executor.h"
-#include "stexecutor/command_info.h"
+#include "stexecutor/executed_command_info.h"
 
 class DllInjector;
 
@@ -26,7 +26,7 @@ class ExecutorImpl : public ExecutorIf {
       const std::string& abs_path, const bool for_writing) override;
   void PushStdOutput(
       const StdHandles::type handle, const std::string& data) override;
-  void OnBeforeProcessCreate(
+  CacheHitInfo OnBeforeProcessCreate(
       const std::string& exe_path,
       const std::vector<std::string>& arguments,
       const std::string& startup_dir,
@@ -39,7 +39,7 @@ class ExecutorImpl : public ExecutorIf {
 
  private:
   DllInjector* dll_injector_;
-  CommandInfo command_info_;
+  ExecutedCommandInfo command_info_;
   base::ScopedHandle process_handle_;
 };
 

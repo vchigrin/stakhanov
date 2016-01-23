@@ -63,7 +63,8 @@ bool FilesystemFilesStorage::GetFileFromStorage(
           logger_, "Object doesn't exist " << src_path.c_str());
     return false;
   }
-  boost::filesystem::copy(src_path, dest_path);
+  // TODO(vchigrin): Consider usage of hard links.
+  boost::filesystem::copy_file(src_path, dest_path);
   return true;
 }
 

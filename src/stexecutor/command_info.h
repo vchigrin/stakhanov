@@ -9,13 +9,11 @@
 #include <vector>
 #include <unordered_set>
 
-struct CommandInfo {
+struct ExecutedCommandInfo {
   int exit_code;
-  int id;
-  std::string startup_directory;
-  std::string command_line;
-  std::unordered_set<std::string> input_files;
-  std::unordered_set<std::string> output_files;
+  int command_id;
+  std::unordered_set<boost::filesystem::path> input_files;
+  std::unordered_set<boost::filesystem::path> output_files;
   std::vector<int> child_command_ids;
   std::string result_stdout;
   std::string result_stderr;
