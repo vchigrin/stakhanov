@@ -15,7 +15,8 @@ service Executor {
   void OnBeforeProcessCreate(
       1:string exe_path,
       2:list<string> command_line,
-      3:string startup_dir_utf8);
+      3:string startup_dir_utf8,
+      4:list<string> environment_strings);
 
   void OnSuspendedProcessCreated(1:i32 child_pid);
 }

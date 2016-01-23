@@ -238,6 +238,22 @@ std::vector<std::wstring> SplitCommandLine(const char* command_line) {
   return SplitCommandLineWide(command_line_wide.c_str());
 }
 
+std::vector<std::string> GetEnvironmentStringsAsUTF8() {
+  const wchar_t* env_block = GetEnvironmentStringsW();
+  if (!env_block) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "GetEnvironmentStringsW failed, error " << error);
+    return std::vector<std::string>();
+  }
+  std::vector<std::string> result;
+  while (*env_block) {
+    std::wstring env_string = env_block;
+    env_block += (env_string.length() + 1);
+    result.push_back(base::ToUTF8FromWide(env_string));
+  }
+  return result;
+}
+
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
 BOOL CreateProcessImpl(
     FUNCTION actual_function,
@@ -279,14 +295,14 @@ BOOL CreateProcessImpl(
     startup_dir_utf8 = base::ToUTF8FromWide(current_dir.wstring());
   }
 
-  // TODO(vchigrin): Pass environment
   // TODO(vchigrin): Analyze in executor, if we can use cached
   // results of this invokation, create some dummy process driver
   // instead of actual process creation.
   GetExecutor()->OnBeforeProcessCreate(
       exe_path,
       arguments_utf8,
-      startup_dir_utf8);
+      startup_dir_utf8,
+      GetEnvironmentStringsAsUTF8());
 
   BOOL result = actual_function(
       application_name,

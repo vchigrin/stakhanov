@@ -77,15 +77,24 @@ void ExecutorImpl::OnSuspendedProcessCreated(const int32_t child_pid) {
 void ExecutorImpl::OnBeforeProcessCreate(
     const std::string& exe_path,
     const std::vector<std::string>& arguments,
-    const std::string& startup_dir) {
+    const std::string& startup_dir,
+    const std::vector<std::string>& environment_strings) {
   std::string buffer;
   for (const std::string& x : arguments) {
     buffer += x;
     buffer += " ";
   }
+  std::string env_buffer;
+  for (const std::string& x : environment_strings) {
+    env_buffer += x;
+    env_buffer += " ";
+  }
   LOG4CPLUS_INFO(
       logger_,
-      "Create child " << exe_path.c_str() << " ARGS " << buffer.c_str() << " IN " << startup_dir.c_str());
+      "Create child " << exe_path.c_str() <<
+      " ARGS " << buffer.c_str() <<
+      " IN " << startup_dir.c_str() <<
+      " ENV " << env_buffer.c_str());
 }
 
 void ExecutorImpl::PushStdOutput(

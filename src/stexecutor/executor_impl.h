@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "base/scoped_handle.h"
 #include "gen-cpp/Executor.h"
@@ -28,7 +29,8 @@ class ExecutorImpl : public ExecutorIf {
   void OnBeforeProcessCreate(
       const std::string& exe_path,
       const std::vector<std::string>& arguments,
-      const std::string& startup_dir) override;
+      const std::string& startup_dir,
+      const std::vector<std::string>& environment) override;
   void OnSuspendedProcessCreated(const int32_t child_pid) override;
   void FillExitCode();
   const CommandInfo& command_info() const {
