@@ -441,17 +441,10 @@ bool InstallHooks(HMODULE current_module) {
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
           "ntdll.dll", ntdll_intercepts));
-  HMODULE kernel_module = GetModuleHandleA("kernelbase.dll");
-  if (kernel_module) {
-    intercepts.insert(
-        std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
-            "kernelbase.dll", kernel_intercepts));
-  } else {
-    intercepts.insert(
-        std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
-            "kernel32.dll", kernel_intercepts));
-    kernel_module = GetModuleHandleA("kernel32.dll");
-  }
+  HMODULE kernel_module = GetModuleHandleA("kernel32.dll");
+  intercepts.insert(
+      std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
+          "kernel32.dll", kernel_intercepts));
   LOG4CPLUS_ASSERT(logger_, kernel_module);
   g_original_CreateProcessW = reinterpret_cast<LPCREATE_PROCESS_W>(
       GetProcAddress(kernel_module, "CreateProcessW"));
