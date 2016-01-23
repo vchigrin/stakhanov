@@ -158,8 +158,8 @@ NTSTATUS NTAPI NewNtCreateFile(
       if (name_str[name_str.length() - 1] == L'\\')
         name_str = name_str.substr(0, name_str.length() - 1);
       name_str = base::ToLongPathName(name_str);
-      boost::filesystem::path boost_path(name_str);
-      if (!boost::filesystem::is_directory(boost_path)) {
+      DWORD attributes = ::GetFileAttributesW(name_str.c_str());
+      if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
         // Don't care about directories.
         std::string abs_path_utf8 = base::ToUTF8FromWide(name_str);
         executor->HookedCreateFile(
