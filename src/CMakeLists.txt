@@ -32,7 +32,7 @@ endif()
 set(LOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME OFF CACHE BOOL "" FORCE)
 
 # ---------------------- Boost ---------------------------------------------
-set(BOOST_ROOT "C:\\local\\boost_1_59_0")
+set(BOOST_ROOT "C:\\local\\boost_1_60_0")
 if(CMAKE_CL_64)
   set(BOOST_LIBRARYDIR "${BOOST_ROOT}\\lib64-msvc-14.0")
 else()
