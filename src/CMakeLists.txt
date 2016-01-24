@@ -67,6 +67,11 @@ add_subdirectory(third_party/log4cplus)
 
 set(LOG4CPLUS_INCLUDE "${CMAKE_SOURCE_DIR}/third_party/log4cplus/include")
 
+# ---------------------- Crypto++ -----------------------------------------
+# TODO(vchigrin): Remove this once Crypto++ will fix this.
+set(DISABLE_ASM ON CACHE BOOL "" FORCE)  # At present fails x64 build.
+add_subdirectory(third_party/cryptopp)
+
 # ---------------------- Other --------------------------------------------
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D UNICODE -D _UNICODE")

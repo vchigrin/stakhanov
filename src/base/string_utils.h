@@ -6,6 +6,7 @@
 #define BASE_STRING_UTILS_H_
 
 #include <string>
+#include <vector>
 
 namespace base {
 std::string ToUTF8FromWide(const std::wstring& wide_string);
@@ -28,6 +29,8 @@ std::wstring ToWideFromUTF8(const std::string& utf8_string);
 std::wstring ToWideFromANSI(const std::string& ansi_string);
 std::string UTF8ToLower(const std::string& src);
 std::string ASCIIToLower(const std::string& src);
+
+std::string BytesToHexString(const std::vector<uint8_t>& bytes);
 }  // namespace base
 
 #endif  // BASE_STRING_UTILS_H_

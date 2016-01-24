@@ -9,17 +9,24 @@ add_executable(stexecutor
   executor_impl.h
   executor_factory.cc
   executor_factory.h
+  files_storage.h
+  filesystem_files_storage.cc
+  filesystem_files_storage.h
   main.cc
 )
 
 target_link_libraries(stexecutor
   base
-  sthook_communication
+  cryptopp-static
   log4cplus
+  sthook_communication
 )
 
 target_compile_definitions(stexecutor PRIVATE
   _WINSOCKAPI_
+  # To avoid warnings about MD5. They are fine since we use it not for
+  # cryptographic targets.
+  CRYPTOPP_ENABLE_NAMESPACE_WEAK=1
 )
 
 target_include_directories(stexecutor PUBLIC

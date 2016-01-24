@@ -2,6 +2,9 @@ vars = {
   # log4cplus REL_1_2_0-RC4 tag.
   "log4cplus_revision": "77de48a56d8d1e1fee1b7f0e35cdb9d17ad4f738",
   "thrift_revision": "53dd39833a08ce33582e5ff31fa18bb4735d6731",
+  # Crypto++ master, > 5.6.3. CMake build is not went to any release yet,
+  # replace it once any stable release with CMake build appears.
+  "cryptopp_revision": "80134f2ef4f7f3f4e9c39e1a8098fb8ff2a06ca4",
 }
 
 deps = {
@@ -10,6 +13,9 @@ deps = {
   "src/third_party/thrift":
     "https://git-wip-us.apache.org/repos/asf/thrift.git@" +
        Var("thrift_revision"),
+  "src/third_party/cryptopp":
+    "https://github.com/weidai11/cryptopp.git@" +
+       Var("cryptopp_revision"),
 }
 
 hooks = [

@@ -6,6 +6,7 @@
 
 #include <codecvt>
 #include <locale>
+#include <sstream>
 
 #include <windows.h>
 
@@ -79,6 +80,15 @@ std::string ASCIIToLower(const std::string& src) {
     symbol = std::tolower(symbol, c_locale);
   }
   return result;
+}
+
+std::string BytesToHexString(const std::vector<uint8_t>& bytes) {
+  std::ostringstream buffer;
+  buffer << std::hex;
+  for (uint8_t byte : bytes) {
+    buffer << byte;
+  }
+  return buffer.str();
 }
 
 }  // namespace base
