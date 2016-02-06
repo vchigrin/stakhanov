@@ -8,12 +8,14 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
+#include "base/filesystem_utils.h"
+#include "boost/filesystem.hpp"
 
 struct ExecutedCommandInfo {
   int exit_code;
   int command_id;
-  std::unordered_set<boost::filesystem::path> input_files;
-  std::unordered_set<boost::filesystem::path> output_files;
+  std::unordered_set<boost::filesystem::path, base::FilePathHash> input_files;
+  std::unordered_set<boost::filesystem::path, base::FilePathHash> output_files;
   std::vector<int> child_command_ids;
   std::string result_stdout;
   std::string result_stderr;

@@ -7,7 +7,6 @@
 
 #include <string>
 #include <vector>
-#include <unordered_set>
 
 // NOTE: all passed in paths must already be normalized,
 // and have already stripped build_root directory.
@@ -17,7 +16,11 @@ class ProcessCreationRequest {
       const std::string& exe_path,
       const std::string& startup_directory,
       const std::vector<std::string>& command_line,
-      const std::unordered_set<std::string>& environment_strings);
+      const std::vector<std::string>& environment_strings);
+
+  const std::string& exe_path() const {
+    return exe_path_;
+  }
 
   const std::string& startup_directory() const {
     return startup_directory_;
@@ -27,8 +30,8 @@ class ProcessCreationRequest {
     return command_line_;
   }
 
-  const std::unordered_set<std::string>& environment_strings() const {
-    return environment_strings_;
+  const std::vector<std::string>& sorted_environment_strings() const {
+    return sorted_environment_strings_;
   }
 
   size_t ComputeHashCode() const;
@@ -37,7 +40,7 @@ class ProcessCreationRequest {
   std::string exe_path_;
   std::string startup_directory_;
   std::vector<std::string> command_line_;
-  std::unordered_set<std::string> environment_strings_;
+  std::vector<std::string> sorted_environment_strings_;
 };
 
 #endif  // STEXECUTOR_PROCESS_CREATION_REQUEST_H_

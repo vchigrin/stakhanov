@@ -58,6 +58,13 @@ std::basic_string<CHAR_TYPE> ToLongPathName(
   }
 }
 
+struct FilePathHash {
+  size_t operator()(const boost::filesystem::path& file_path) const {
+    std::hash<std::wstring> hasher;
+    return hasher(file_path.generic_wstring());
+  }
+};
+
 }  // namespace base
 
 #endif  // BASE_FILESYSTEM_UTILS_H_

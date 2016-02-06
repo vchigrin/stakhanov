@@ -7,15 +7,16 @@
 
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 #include "base/scoped_handle.h"
 #include "boost/filesystem.hpp"
 #include "gen-cpp/Executor.h"
-#include "stexecutor/command_info.h"
+#include "stexecutor/executed_command_info.h"
 
 class ProcessCreationRequest;
 class ProcessCreationResponse;
-class CachedFilesStorage;
+class FilesStorage;
 class RulesMapper;
 struct ExecutedCommandInfo;
 
@@ -25,7 +26,7 @@ class ExecutingEngine {
  public:
    ExecutingEngine(
        boost::filesystem::path build_dir_path,
-       std::unique_ptr<CachedFilesStorage> file_storage,
+       std::unique_ptr<FilesStorage> files_storage,
        std::unique_ptr<RulesMapper> rules_mapper);
 
    ProcessCreationResponse AttemptCacheExecute(
@@ -35,9 +36,10 @@ class ExecutingEngine {
  private:
    std::mutex instance_lock_;
 
-   std::unique_ptr<CachedFilesStorage> file_storage_;
+   std::unique_ptr<FilesStorage> files_storage_;
    std::unique_ptr<RulesMapper> rules_mapper_;
-   std::unordered_map<int, std::unique_ptr<ProcessCreationRequest>> running_commands_;
+   std::unordered_map<
+       int, std::unique_ptr<ProcessCreationRequest>> running_commands_;
    int next_command_id_;
 };
 

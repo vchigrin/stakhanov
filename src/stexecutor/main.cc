@@ -16,14 +16,15 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "log4cplus/win32debugappender.h"
-#include "stexecutor/command_info.h"
+#include "stexecutor/executed_command_info.h"
 #include "stexecutor/dll_injector.h"
 #include "stexecutor/executor_factory.h"
+#include "stexecutor/filesystem_files_storage.h"
 #include "sthook/sthook_communication.h"
 #include "thrift/server/TThreadedServer.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TServerSocket.h"
-
+/*
 namespace boost {
 namespace serialization {
 
@@ -43,7 +44,7 @@ void serialize(
 
 }  // namespace serialization
 }  // namespace boost
-
+*/
 namespace {
 
 const wchar_t kGetLoadLibraryAddrExecutable[] = L"get_load_library_addr32.exe";
@@ -94,7 +95,7 @@ boost::filesystem::path GetDumpFileName() {
   boost::filesystem::path executable_dir = base::GetCurrentExecutableDir();
   return executable_dir / kDumpFileName;
 }
-
+/*
 void GenerateCommandsDump(
     const std::vector<CommandInfo>& commands,
     const boost::filesystem::path& dump_path) {
@@ -102,7 +103,7 @@ void GenerateCommandsDump(
   boost::archive::xml_oarchive archive(stream);
   archive & BOOST_SERIALIZATION_NVP(commands);
 }
-
+*/
 }  // namespace
 
 int main(int argc, char* argv) {
@@ -126,9 +127,20 @@ int main(int argc, char* argv) {
       current_executable_dir / base::kStHookDllName64Bit,
       load_library_addr32,
       load_library_addr64);
-
+     ///j
+       boost::filesystem::path build_dir_path
+       std::unique_ptr<CachedFilesStorage> file_storage(new FilesystemFilesStorage(cache_dir_path));
+       std::unique_ptr<RulesMapper> rules_mapper(new RulesMapper());
+./..
+  std::unique_ptr<ExecutingEngine> executing_engine(new ExecutingEngine(
+      build_dir_path,
+      std::move(file_storage),
+      std::move(rules_mapper)
+  ));
   boost::shared_ptr<ExecutorFactory> executor_factory =
-      boost::make_shared<ExecutorFactory>(std::move(dll_injector));
+      boost::make_shared<ExecutorFactory>(
+          std::move(dll_injector),
+          executing_engine.get());
   g_server = std::make_unique<ServerType>(
       boost::make_shared<ExecutorProcessorFactory>(executor_factory),
       boost::make_shared<TServerSocket>(sthook::GetExecutorPort()),
@@ -143,7 +155,9 @@ int main(int argc, char* argv) {
   boost::filesystem::path dump_path = GetDumpFileName();
   std::cout << "Done. Writing commands dump into " << dump_path.string()
             << std::endl;
+            /*
   GenerateCommandsDump(
       executor_factory->FinishAndGetCommandsInfo(), dump_path);
+  */
   return 0;
 }

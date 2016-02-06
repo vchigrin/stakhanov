@@ -16,10 +16,10 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutingEngine");
 } // namespace
 
 ExecutingEngine::ExecutingEngine(
-   std::unique_ptr<CachedFilesStorage> file_storage,
+   std::unique_ptr<FilesStorage> files_storage,
    std::unique_ptr<RulesMapper> rules_mapper,
    std::unique_ptr<BuildDirectoryState> build_dir_state)
-    : file_storage_(std::move(file_storage))
+    : files_storage_(std::move(files_storage))
       rules_mapper_(std::move(rules_mapper)),
       build_dir_state_(std::move(build_dir_state)) {
 }
@@ -42,9 +42,9 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
   }
   for (const FileInfo& file_info : execution_response->output_files) {
     build_dir_state_->TakeFileFromStorage(
-       *file_storage_,
+       *files_storage_,
        file_info.storage_id,
-       file_info.dest_path);
+       file_info.rel_file_path);
   }
   return ProcessCreationResponse::BuildCacheHitResponse(
       command_id,
@@ -65,13 +65,15 @@ void ExecutingEngine::SaveCommandResults(
   const ProcessCreationRequest& request = it->second;
   std::vector<FileInfo> output_files, input_files;
   for (const boost::filesystem::path& output_path : command_info.output_files) {
-    std::string storage_id = file_storage_->StoreFile(output_path);
+    std::string storage_id = files_storage_->StoreFile(output_path);
     if (storage_id.empty()) {
       LOG4CPLUS_ERROR(
           logger_, "Failed save file to storage, skip command results caching ");
       return;
     }
-    output_files.push_back(FileInfo(output_path, storage_id));
+    boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
+        output_path);
+    output_files.push_back(FileInfo(rel_path, storage_id));
   }
   for (const boost::filesystem::path& input_path : command_info.input_files) {
     std::string storage_id = build_dir_state_->GetFileStorageId(input_path);
@@ -79,7 +81,9 @@ void ExecutingEngine::SaveCommandResults(
       LOG4CPLUS_WARNING(
           logger_, "File is not storage file " << input_path);
     }
-    input_files.push_back(FileInfo(input_path, storage_id));
+    boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
+        input_path);
+    input_files.push_back(FileInfo(rel_path, storage_id));
   }
   rules_mapper_->AddRule(
     request,

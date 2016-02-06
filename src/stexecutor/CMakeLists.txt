@@ -5,6 +5,7 @@
 add_executable(stexecutor
   dll_injector.cc
   dll_injector.h
+  executed_command_info.h
   executor_impl.cc
   executor_impl.h
   executor_factory.cc

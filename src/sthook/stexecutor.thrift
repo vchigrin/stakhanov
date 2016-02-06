@@ -11,7 +11,7 @@ enum StdHandles {
 struct CacheHitInfo {
   1:bool cache_hit;
   // Further fields are valid only for cache hits.
-  2:optional int exit_code;
+  2:optional i32 exit_code;
   3:optional string result_stdout;
   4:optional string result_stderr;
 }

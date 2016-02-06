@@ -8,6 +8,9 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "stexecutor/dll_injector.h"
+#include "stexecutor/executing_engine.h"
+#include "stexecutor/process_creation_request.h"
+#include "stexecutor/process_creation_response.h"
 
 namespace {
 
@@ -22,9 +25,9 @@ boost::filesystem::path NormalizePath(const std::string& abs_path) {
     LOG4CPLUS_INFO(logger_, "Invalid special path " << abs_path.c_str());
     return boost::filesystem::path();
   }
-  // Use consistent delimeters in path - WinAPI seems to support both
-  std::wstring wide_path = base::ToWideFromUTF8(abs_path)
-  return boost::filesystem::path(base::WideToLower(wide_path));
+  std::string lower_path = base::UTF8ToLower(abs_path);
+  std::wstring wide_path = base::ToWideFromUTF8(lower_path);
+  return boost::filesystem::path(wide_path);
 }
 #else
 #error "This function at present implemented for Windows only"
@@ -56,9 +59,11 @@ void ExecutorImpl::Initialize(
     const int32_t current_pid,
     const std::string& command_line,
     const std::string& startup_directory) {
+  /*
   command_info_.id = current_pid;
   command_info_.command_line = command_line;
   command_info_.startup_directory = startup_directory;
+  */
   process_handle_ = base::ScopedHandle(
       OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE,
       FALSE, current_pid));
@@ -76,25 +81,24 @@ void ExecutorImpl::OnSuspendedProcessCreated(const int32_t child_pid) {
   command_info_.child_command_ids.push_back(child_pid);
 }
 
-CacheHitInfo ExecutorImpl::OnBeforeProcessCreate(
+void ExecutorImpl::OnBeforeProcessCreate(
+    CacheHitInfo& result,
     const std::string& exe_path,
     const std::vector<std::string>& arguments,
-    const std::string& startup_dir,
+    const std::string& startup_directory,
     const std::vector<std::string>& environment_strings) {
   ProcessCreationRequest creation_request(
-      NormPath(exe_path),
-      NormPath(startup_directory),
+      NormalizePath(exe_path),
+      NormalizePath(startup_directory),
       arguments,
       std::unordered_set<std::string>(
           environment_strings.begin(), environment_strings.end()));
   ProcessCreationResponse response = executing_engine_->AttemptCacheExecute(
       creation_request);
-  CacheHitInfo result;
   result.cache_hit = response.is_cache_hit();
   result.exit_code = response.exit_code();
   result.result_stdout = response.result_stdout();
   result.result_stderr = response.result_stderr();
-  return result;
 }
 
 void ExecutorImpl::PushStdOutput(
@@ -116,7 +120,7 @@ void ExecutorImpl::FillExitCode() {
     if (exit_code != STILL_ACTIVE) {
       break;
     } else {
-      LOG4CPLUS_INFO(logger_, "Waiting for process " << command_info_.id);
+      LOG4CPLUS_INFO(logger_, "Waiting for process ");
       if (WaitForSingleObject(
           process_handle_.Get(), INFINITE) != WAIT_OBJECT_0) {
         DWORD error = GetLastError();
@@ -124,7 +128,7 @@ void ExecutorImpl::FillExitCode() {
             logger_, "WaitForSingleObject failed, error " << error);
         break;
       }
-      LOG4CPLUS_INFO(logger_, "Wait done, process " << command_info_.id);
+      LOG4CPLUS_INFO(logger_, "Wait done");
     }
   }
   command_info_.exit_code = exit_code;

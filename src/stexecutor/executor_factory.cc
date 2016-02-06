@@ -7,8 +7,11 @@
 #include "stexecutor/dll_injector.h"
 #include "stexecutor/executor_impl.h"
 
-ExecutorFactory::ExecutorFactory(std::unique_ptr<DllInjector> dll_injector)
+ExecutorFactory::ExecutorFactory(
+    std::unique_ptr<DllInjector> dll_injector,
+    ExecutingEngine* executing_engine)
     : dll_injector_(std::move(dll_injector)),
+      executing_engine_(executing_engine),
       active_handlers_count_(0) {
 }
 
@@ -18,10 +21,11 @@ ExecutorIf* ExecutorFactory::getHandler(
     std::unique_lock<std::mutex> lock(instance_lock_);
     ++active_handlers_count_;
   }
-  return new ExecutorImpl(dll_injector_.get());
+  return new ExecutorImpl(dll_injector_.get(), executing_engine_);
 }
 
 void ExecutorFactory::releaseHandler(ExecutorIf* handler) {
+  /*
   ExecutorImpl* executor = static_cast<ExecutorImpl*>(handler);
   executor->FillExitCode();
   {
@@ -31,8 +35,9 @@ void ExecutorFactory::releaseHandler(ExecutorIf* handler) {
     --active_handlers_count_;
     handler_released_.notify_all();
   }
+  */
 }
-
+/*
 const std::vector<CommandInfo>& ExecutorFactory::FinishAndGetCommandsInfo() {
   while (true) {
     std::unique_lock<std::mutex> lock(instance_lock_);
@@ -42,3 +47,4 @@ const std::vector<CommandInfo>& ExecutorFactory::FinishAndGetCommandsInfo() {
   }
   return commands_info_;
 }
+*/
