@@ -2,31 +2,40 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#ifndef STEXECUTOR_IN_MEMORY_RULES_MAPPER_H_
-#define STEXECUTOR_IN_MEMORY_RULES_MAPPER_H_
+#ifndef STEXECUTOR_RULES_MAPPERS_IN_MEMORY_RULES_MAPPER_H_
+#define STEXECUTOR_RULES_MAPPERS_IN_MEMORY_RULES_MAPPER_H_
 
-#include "stexecutor/rules_mapper.h"
+#include <unordered_map>
+
+#include "stexecutor/rules_mappers/rules_mapper.h"
+#include "stexecutor/rules_mappers/rules_hashing.h"
+
+namespace rules_mappers {
+
+class InMemoryRequestResults;
 
 class InMemoryRulesMapper : public RulesMapper {
  public:
   InMemoryRulesMapper();
   ~InMemoryRulesMapper();
 
-  std::unique_ptr<CachedExecutionResponse> FindCachedResults(
+  const CachedExecutionResponse* FindCachedResults(
       const ProcessCreationRequest& process_creation_request,
       const BuildDirectoryState& build_dir_state) override;
   void AddRule(
       const ProcessCreationRequest& process_creation_request,
-      const std::vector<FileInfo>& input_files,
+      std::vector<FileInfo> input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
 
  private:
-  class ProcessCreationRequestResults;
-  using HashValue = uint8_t[16];
   static HashValue ComputeProcessCreationHash(
       const ProcessCreationRequest& process_creation_request);
   std::unordered_map<
-      HashValue, std::unique_ptr<ProcessCreationRequestResults>> rules_;
+      HashValue,
+      std::unique_ptr<InMemoryRequestResults>,
+      HashValueHasher> rules_;
 };
 
-#endif  // STEXECUTOR_IN_MEMORY_RULES_MAPPER_H_
+}  // namespace rules_mappers
+
+#endif  // STEXECUTOR_RULES_MAPPERS_IN_MEMORY_RULES_MAPPER_H_

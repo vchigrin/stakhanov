@@ -3,17 +3,29 @@
 # found in the LICENSE file.
 
 add_executable(stexecutor
+  build_directory_state.cc
+  build_directory_state.h
   dll_injector.cc
   dll_injector.h
   executed_command_info.h
-  executor_impl.cc
-  executor_impl.h
   executor_factory.cc
   executor_factory.h
+  executor_impl.cc
+  executor_impl.h
   files_storage.h
   filesystem_files_storage.cc
   filesystem_files_storage.h
   main.cc
+  rules_mappers/cached_execution_response.h
+  rules_mappers/file_info.h
+  rules_mappers/file_set.cc
+  rules_mappers/file_set.h
+  rules_mappers/in_memory_request_results.cc
+  rules_mappers/in_memory_request_results.h
+  rules_mappers/in_memory_rules_mapper.cc
+  rules_mappers/in_memory_rules_mapper.h
+  rules_mappers/rules_hashing.h
+  rules_mappers/rules_mapper.h
 )
 
 target_link_libraries(stexecutor

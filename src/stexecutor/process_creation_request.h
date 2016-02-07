@@ -7,22 +7,23 @@
 
 #include <string>
 #include <vector>
+#include "boost/filesystem.hpp"
 
 // NOTE: all passed in paths must already be normalized,
 // and have already stripped build_root directory.
 class ProcessCreationRequest {
  public:
   ProcessCreationRequest(
-      const std::string& exe_path,
-      const std::string& startup_directory,
+      const boost::filesystem::path& exe_path,
+      const boost::filesystem::path& startup_directory,
       const std::vector<std::string>& command_line,
       const std::vector<std::string>& environment_strings);
 
-  const std::string& exe_path() const {
+  const boost::filesystem::path& exe_path() const {
     return exe_path_;
   }
 
-  const std::string& startup_directory() const {
+  const boost::filesystem::path& startup_directory() const {
     return startup_directory_;
   }
 
@@ -37,8 +38,8 @@ class ProcessCreationRequest {
   size_t ComputeHashCode() const;
 
  private:
-  std::string exe_path_;
-  std::string startup_directory_;
+  boost::filesystem::path exe_path_;
+  boost::filesystem::path startup_directory_;
   std::vector<std::string> command_line_;
   std::vector<std::string> sorted_environment_strings_;
 };

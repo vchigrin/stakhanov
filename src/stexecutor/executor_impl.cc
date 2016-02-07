@@ -91,8 +91,7 @@ void ExecutorImpl::OnBeforeProcessCreate(
       NormalizePath(exe_path),
       NormalizePath(startup_directory),
       arguments,
-      std::unordered_set<std::string>(
-          environment_strings.begin(), environment_strings.end()));
+      environment_strings);
   ProcessCreationResponse response = executing_engine_->AttemptCacheExecute(
       creation_request);
   result.cache_hit = response.is_cache_hit();

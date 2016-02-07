@@ -8,6 +8,8 @@
 #include "log4cplus/loggingmacros.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
+#include "stexecutor/build_directory_state.h"
+#include "stexecutor/rules_mappers/rules_mapper.h"
 
 namespace {
 
@@ -17,11 +19,14 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutingEngine");
 
 ExecutingEngine::ExecutingEngine(
    std::unique_ptr<FilesStorage> files_storage,
-   std::unique_ptr<RulesMapper> rules_mapper,
+   std::unique_ptr<rules_mappers::RulesMapper> rules_mapper,
    std::unique_ptr<BuildDirectoryState> build_dir_state)
     : files_storage_(std::move(files_storage))
       rules_mapper_(std::move(rules_mapper)),
       build_dir_state_(std::move(build_dir_state)) {
+}
+
+~ExecutingEngine() {
 }
 
 
@@ -42,9 +47,9 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
   }
   for (const FileInfo& file_info : execution_response->output_files) {
     build_dir_state_->TakeFileFromStorage(
-       *files_storage_,
-       file_info.storage_id,
-       file_info.rel_file_path);
+        *files_storage_,
+        file_info.storage_id,
+        file_info.rel_file_path);
   }
   return ProcessCreationResponse::BuildCacheHitResponse(
       command_id,
@@ -76,8 +81,8 @@ void ExecutingEngine::SaveCommandResults(
     output_files.push_back(FileInfo(rel_path, storage_id));
   }
   for (const boost::filesystem::path& input_path : command_info.input_files) {
-    std::string storage_id = build_dir_state_->GetFileStorageId(input_path);
-    if (storage_id.empty()) {
+    std::string content_id = build_dir_state_->GetFileContentId(input_path);
+    if (content_id.empty()) {
       LOG4CPLUS_WARNING(
           logger_, "File is not storage file " << input_path);
     }
@@ -86,12 +91,12 @@ void ExecutingEngine::SaveCommandResults(
     input_files.push_back(FileInfo(rel_path, storage_id));
   }
   rules_mapper_->AddRule(
-    request,
-    input_files,
-    CachedExecutionResponse(
-        output_files,
-        command_info.exit_code,
-        command_info.result_stdout,
-        command_info.result_stderr));
+      request,
+      input_files,
+      CachedExecutionResponse(
+          output_files,
+          command_info.exit_code,
+          command_info.result_stdout,
+          command_info.result_stderr));
   running_commands_->erase(it);
 }

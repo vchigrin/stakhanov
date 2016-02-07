@@ -12,7 +12,9 @@ ProcessCreationRequest::ProcessCreationRequest(
     : exe_path_(exe_path),
       startup_directory_(startup_directory),
       command_line_(command_line),
-      environment_strings_(environment_strings) {
+      sorted_environment_strings_(environment_strings) {
+  std::sort(
+      sorted_environment_strings_.begin(), sorted_environment_strings_.end());
 }
 
 size_t ProcessCreationRequest::ComputeHashCode() const {
