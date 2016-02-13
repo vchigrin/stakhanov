@@ -26,6 +26,13 @@ add_executable(stexecutor
   process_creation_response.h
   rules_mappers/cached_execution_response.h
   rules_mappers/file_info.h
+  rules_mappers/file_set.cc
+  rules_mappers/file_set.h
+  rules_mappers/in_memory_request_results.cc
+  rules_mappers/in_memory_request_results.h
+  rules_mappers/in_memory_rules_mapper.cc
+  rules_mappers/in_memory_rules_mapper.h
+  rules_mappers/rules_hashing.h
   rules_mappers/rules_mapper.h
 )
 
