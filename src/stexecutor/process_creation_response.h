@@ -36,16 +36,16 @@ class ProcessCreationResponse {
   static ProcessCreationResponse BuildCacheHitResponse(
       int command_id,
       int exit_code,
-      std::string result_stdout,
-      std::string result_stderr);
+      const std::string& result_stdout,
+      const std::string& result_stderr);
 
  private:
   ProcessCreationResponse(
-      int command_id,
+      int real_command_id,
       bool is_cache_hit,
       int exit_code,
-      std::string result_stdout,
-      std::string result_stderr);
+      const std::string& result_stdout,
+      const std::string& result_stderr);
 
   int real_command_id_;
   bool is_cache_hit_;

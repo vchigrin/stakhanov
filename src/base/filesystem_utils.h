@@ -46,8 +46,8 @@ std::basic_string<CHAR_TYPE> ToLongPathName(
     const std::basic_string<CHAR_TYPE>& src) {
   std::vector<CHAR_TYPE> buffer(src.length() + 1);
   while (true) {
-    DWORD api_result = GetLongPathNameImpl(
-        src.c_str(), &buffer[0], buffer.size());
+    size_t api_result = GetLongPathNameImpl(
+        src.c_str(), &buffer[0], static_cast<DWORD>(buffer.size()));
     if (api_result > buffer.size()) {
       buffer.resize(api_result);
     }

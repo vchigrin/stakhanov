@@ -19,8 +19,8 @@ ProcessCreationResponse ProcessCreationResponse::BuildCacheMissResponse(
 ProcessCreationResponse ProcessCreationResponse::BuildCacheHitResponse(
     int command_id,
     int exit_code,
-    std::string& result_stdout,
-    std::string& result_stderr) {
+    const std::string& result_stdout,
+    const std::string& result_stderr) {
   return ProcessCreationResponse(
       command_id,
       true,
@@ -30,12 +30,12 @@ ProcessCreationResponse ProcessCreationResponse::BuildCacheHitResponse(
 }
 
 ProcessCreationResponse::ProcessCreationResponse(
-    int command_id,
+    int real_command_id,
     bool is_cache_hit,
     int exit_code,
-    std::string& result_stdout,
-    std::string& result_stderr)
-    : command_id_(real_command_id),
+    const std::string& result_stdout,
+    const std::string& result_stderr)
+    : real_command_id_(real_command_id),
       is_cache_hit_(is_cache_hit),
       exit_code_(exit_code),
       result_stdout_(result_stdout),

@@ -6,9 +6,11 @@
 
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
+#include "stexecutor/files_storage.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
 #include "stexecutor/build_directory_state.h"
+#include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/rules_mapper.h"
 
 namespace {
@@ -21,34 +23,35 @@ ExecutingEngine::ExecutingEngine(
    std::unique_ptr<FilesStorage> files_storage,
    std::unique_ptr<rules_mappers::RulesMapper> rules_mapper,
    std::unique_ptr<BuildDirectoryState> build_dir_state)
-    : files_storage_(std::move(files_storage))
+    : files_storage_(std::move(files_storage)),
       rules_mapper_(std::move(rules_mapper)),
       build_dir_state_(std::move(build_dir_state)) {
 }
 
-~ExecutingEngine() {
+ExecutingEngine::~ExecutingEngine() {
 }
 
-
 ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
-   const ProcessCreationRequest& request) {
+   const ProcessCreationRequest& process_creation_request) {
   std::unique_lock<std::mutex> instance_lock(instance_lock_);
   const int command_id = next_command_id_++;
-  scoped_ptr<CachedExecutionResponse> execution_response(
+  const rules_mappers::CachedExecutionResponse* execution_response =
       rules_mapper_->FindCachedResults(
-          process_creation_request, *build_dir_state_));
+          process_creation_request, *build_dir_state_);
   if (!execution_response) {
     running_commands_.insert(
         std::make_pair(
             command_id,
-            std::make_unique_ptr<ProcessCreationRequest>(request)));
+            std::unique_ptr<ProcessCreationRequest>(
+                new ProcessCreationRequest(process_creation_request))));
     return ProcessCreationResponse::BuildCacheMissResponse(
         command_id);
   }
-  for (const FileInfo& file_info : execution_response->output_files) {
+  for (const rules_mappers::FileInfo& file_info :
+      execution_response->output_files) {
     build_dir_state_->TakeFileFromStorage(
-        *files_storage_,
-        file_info.storage_id,
+        files_storage_.get(),
+        file_info.storage_content_id,
         file_info.rel_file_path);
   }
   return ProcessCreationResponse::BuildCacheHitResponse(
@@ -67,8 +70,8 @@ void ExecutingEngine::SaveCommandResults(
         logger_, "Invalid command id passed " << command_info.command_id);
     return;
   }
-  const ProcessCreationRequest& request = it->second;
-  std::vector<FileInfo> output_files, input_files;
+  const ProcessCreationRequest* request = it->second.get();
+  std::vector<rules_mappers::FileInfo> output_files, input_files;
   for (const boost::filesystem::path& output_path : command_info.output_files) {
     std::string storage_id = files_storage_->StoreFile(output_path);
     if (storage_id.empty()) {
@@ -78,25 +81,25 @@ void ExecutingEngine::SaveCommandResults(
     }
     boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
         output_path);
-    output_files.push_back(FileInfo(rel_path, storage_id));
+    output_files.push_back(rules_mappers::FileInfo(rel_path, storage_id));
   }
   for (const boost::filesystem::path& input_path : command_info.input_files) {
     std::string content_id = build_dir_state_->GetFileContentId(input_path);
     if (content_id.empty()) {
-      LOG4CPLUS_WARNING(
-          logger_, "File is not storage file " << input_path);
+      LOG4CPLUS_WARN(logger_, "File is not storage file " << input_path);
     }
     boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
         input_path);
-    input_files.push_back(FileInfo(rel_path, storage_id));
+    input_files.push_back(rules_mappers::FileInfo(rel_path, content_id));
   }
   rules_mapper_->AddRule(
-      request,
+      *request,
       input_files,
-      CachedExecutionResponse(
-          output_files,
-          command_info.exit_code,
-          command_info.result_stdout,
-          command_info.result_stderr));
-  running_commands_->erase(it);
+      std::unique_ptr<rules_mappers::CachedExecutionResponse>(
+          new rules_mappers::CachedExecutionResponse(
+              output_files,
+              command_info.exit_code,
+              command_info.result_stdout,
+              command_info.result_stderr)));
+  running_commands_.erase(it);
 }

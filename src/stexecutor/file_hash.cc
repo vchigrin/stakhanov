@@ -4,6 +4,9 @@
 
 #include "stexecutor/file_hash.h"
 
+#include "log4cplus/logger.h"
+#include "log4cplus/loggingmacros.h"
+
 namespace {
 
 log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"HashFileContent");
@@ -29,7 +32,7 @@ bool HashFileContent(
           logger_, "Unexpected sgetn result " << read);
       return false;
     }
-    hasher.Update(&buffer[0], static_cast<size_t>(read));
+    hasher->Update(&buffer[0], static_cast<size_t>(read));
     if (read < kInputBufferSize)
       break;
   }

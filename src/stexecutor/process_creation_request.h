@@ -35,8 +35,6 @@ class ProcessCreationRequest {
     return sorted_environment_strings_;
   }
 
-  size_t ComputeHashCode() const;
-
  private:
   boost::filesystem::path exe_path_;
   boost::filesystem::path startup_directory_;

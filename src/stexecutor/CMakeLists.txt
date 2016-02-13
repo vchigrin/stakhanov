@@ -8,14 +8,22 @@ add_executable(stexecutor
   dll_injector.cc
   dll_injector.h
   executed_command_info.h
+  executing_engine.cc
+  executing_engine.h
   executor_factory.cc
   executor_factory.h
   executor_impl.cc
   executor_impl.h
+  file_hash.cc
+  file_hash.h
   files_storage.h
   filesystem_files_storage.cc
   filesystem_files_storage.h
   main.cc
+  process_creation_request.cc
+  process_creation_request.h
+  process_creation_response.cc
+  process_creation_response.h
   rules_mappers/cached_execution_response.h
   rules_mappers/file_info.h
   rules_mappers/file_set.cc
