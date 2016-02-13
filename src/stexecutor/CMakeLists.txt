@@ -3,12 +3,16 @@
 # found in the LICENSE file.
 
 add_executable(stexecutor
+  build_directory_state.cc
+  build_directory_state.h
   dll_injector.cc
   dll_injector.h
   executor_impl.cc
   executor_impl.h
   executor_factory.cc
   executor_factory.h
+  file_hash.cc
+  file_hash.h
   files_storage.h
   filesystem_files_storage.cc
   filesystem_files_storage.h

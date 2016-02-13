@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "base/string_utils.h"
+#include "stexecutor/file_hash.h"
 #include "third_party/cryptopp/md5.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
@@ -17,7 +18,6 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
     L"FilesystemFilesStorage");
 
 const int kTopDirCharacters = 2;
-const int kInputBufferSize = 1024 * 1024;
 
 }  // namespace
 
@@ -60,34 +60,21 @@ bool FilesystemFilesStorage::GetFileFromStorage(
       storage_dir_ / top_dir_name / object_name;
   if (!boost::filesystem::exists(src_path)) {
     LOG4CPLUS_ERROR(
-          logger_, "Object doesn't exist " << src_path.c_str());
+        logger_, "Object doesn't exist " << src_path.c_str());
     return false;
   }
-  boost::filesystem::copy(src_path, dest_path);
+  // TODO(vchigrin): Consider usage of hard links.
+  boost::filesystem::copy_file(src_path, dest_path);
   return true;
 }
 
 std::string FilesystemFilesStorage::GetFileHash(
     const boost::filesystem::path& file_path) {
   CryptoPP::Weak::MD5 hasher;
-  boost::filesystem::filebuf input_filebuf;
-  if (!input_filebuf.open(file_path, std::ios::in)) {
+  if (!HashFileContent(file_path, &hasher)) {
     LOG4CPLUS_ERROR(
-        logger_, "Failed open file " << file_path.c_str());
+        logger_, "Failed hash file " << file_path.generic_string().c_str());
     return std::string();
-  }
-  std::vector<uint8_t> buffer(kInputBufferSize);
-  while (true) {
-    auto read = input_filebuf.sgetn(
-        reinterpret_cast<char*>(&buffer[0]), kInputBufferSize);
-    if (read < 0) {
-      LOG4CPLUS_ERROR(
-          logger_, "Unexpected sgetn result " << read);
-      return std::string();
-    }
-    hasher.Update(&buffer[0], static_cast<size_t>(read));
-    if (read < kInputBufferSize)
-      break;
   }
   std::vector<uint8_t> digest(hasher.DigestSize());
   hasher.Final(&digest[0]);
