@@ -26,6 +26,7 @@ add_custom_command(
 # Small static library with common code need both for sthook and stexecutor.
 add_library(sthook_communication STATIC
   gen-cpp/Executor.cpp
+  gen-cpp/stexecutor_types.cpp
   sthook_communication.cc
   sthook_communication.h
 )

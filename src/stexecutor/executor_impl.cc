@@ -8,24 +8,26 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "stexecutor/dll_injector.h"
+#include "stexecutor/executing_engine.h"
+#include "stexecutor/process_creation_request.h"
+#include "stexecutor/process_creation_response.h"
 
 namespace {
 
 log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutorImpl");
 
 #ifdef _WINDOWS
-std::string NormalizePath(const std::string& abs_path) {
+boost::filesystem::path NormalizePath(const std::string& abs_path) {
   if (abs_path.find(':') == std::string::npos) {
     // Passed in path are always absolute. If it does not contain column,
     // than usually means that this is reserved file name lie "con", "nul",
     // or some pipe name. Just ignore them.
     LOG4CPLUS_INFO(logger_, "Invalid special path " << abs_path.c_str());
-    return std::string();
+    return boost::filesystem::path();
   }
-  std::string result = abs_path;
-  // Use consistent delimeters in path - WinAPI seems to support both
-  std::replace(result.begin(), result.end(), '\\', '/');
-  return base::UTF8ToLower(result);
+  std::string lower_path = base::UTF8ToLower(abs_path);
+  std::wstring wide_path = base::ToWideFromUTF8(lower_path);
+  return boost::filesystem::path(wide_path);
 }
 #else
 #error "This function at present implemented for Windows only"
@@ -33,13 +35,16 @@ std::string NormalizePath(const std::string& abs_path) {
 
 }  // namespace
 
-ExecutorImpl::ExecutorImpl(DllInjector* dll_injector)
-    : dll_injector_(dll_injector) {
+ExecutorImpl::ExecutorImpl(
+    DllInjector* dll_injector,
+    ExecutingEngine* executing_engine)
+    : dll_injector_(dll_injector),
+      executing_engine_(executing_engine) {
 }
 
 bool ExecutorImpl::HookedCreateFile(
     const std::string& abs_path, const bool for_writing) {
-  std::string norm_path = NormalizePath(abs_path);
+  boost::filesystem::path norm_path = NormalizePath(abs_path);
   if (norm_path.empty()) {  // May be if path is "invalid" for intercept
     return true;
   }
@@ -54,9 +59,11 @@ void ExecutorImpl::Initialize(
     const int32_t current_pid,
     const std::string& command_line,
     const std::string& startup_directory) {
+  /*
   command_info_.id = current_pid;
   command_info_.command_line = command_line;
   command_info_.startup_directory = startup_directory;
+  */
   process_handle_ = base::ScopedHandle(
       OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE,
       FALSE, current_pid));
@@ -75,26 +82,22 @@ void ExecutorImpl::OnSuspendedProcessCreated(const int32_t child_pid) {
 }
 
 void ExecutorImpl::OnBeforeProcessCreate(
+    CacheHitInfo& result,
     const std::string& exe_path,
     const std::vector<std::string>& arguments,
-    const std::string& startup_dir,
+    const std::string& startup_directory,
     const std::vector<std::string>& environment_strings) {
-  std::string buffer;
-  for (const std::string& x : arguments) {
-    buffer += x;
-    buffer += " ";
-  }
-  std::string env_buffer;
-  for (const std::string& x : environment_strings) {
-    env_buffer += x;
-    env_buffer += " ";
-  }
-  LOG4CPLUS_INFO(
-      logger_,
-      "Create child " << exe_path.c_str() <<
-      " ARGS " << buffer.c_str() <<
-      " IN " << startup_dir.c_str() <<
-      " ENV " << env_buffer.c_str());
+  ProcessCreationRequest creation_request(
+      NormalizePath(exe_path),
+      NormalizePath(startup_directory),
+      arguments,
+      environment_strings);
+  ProcessCreationResponse response = executing_engine_->AttemptCacheExecute(
+      creation_request);
+  result.cache_hit = response.is_cache_hit();
+  result.exit_code = response.exit_code();
+  result.result_stdout = response.result_stdout();
+  result.result_stderr = response.result_stderr();
 }
 
 void ExecutorImpl::PushStdOutput(
@@ -116,7 +119,7 @@ void ExecutorImpl::FillExitCode() {
     if (exit_code != STILL_ACTIVE) {
       break;
     } else {
-      LOG4CPLUS_INFO(logger_, "Waiting for process " << command_info_.id);
+      LOG4CPLUS_INFO(logger_, "Waiting for process ");
       if (WaitForSingleObject(
           process_handle_.Get(), INFINITE) != WAIT_OBJECT_0) {
         DWORD error = GetLastError();
@@ -124,7 +127,7 @@ void ExecutorImpl::FillExitCode() {
             logger_, "WaitForSingleObject failed, error " << error);
         break;
       }
-      LOG4CPLUS_INFO(logger_, "Wait done, process " << command_info_.id);
+      LOG4CPLUS_INFO(logger_, "Wait done");
     }
   }
   command_info_.exit_code = exit_code;

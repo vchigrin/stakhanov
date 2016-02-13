@@ -298,7 +298,9 @@ BOOL CreateProcessImpl(
   // TODO(vchigrin): Analyze in executor, if we can use cached
   // results of this invokation, create some dummy process driver
   // instead of actual process creation.
+  CacheHitInfo cache_hit_info;
   GetExecutor()->OnBeforeProcessCreate(
+      cache_hit_info,
       exe_path,
       arguments_utf8,
       startup_dir_utf8,

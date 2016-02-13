@@ -11,22 +11,23 @@
 #include <vector>
 
 #include "gen-cpp/Executor.h"
-#include "stexecutor/command_info.h"
 
 class DllInjector;
+class ExecutingEngine;
 
 class ExecutorFactory : public ExecutorIfFactory {
  public:
-  explicit ExecutorFactory(std::unique_ptr<DllInjector> dll_injector);
+  ExecutorFactory(
+      std::unique_ptr<DllInjector> dll_injector,
+      ExecutingEngine* executing_engine);
   ExecutorIf* getHandler(
       const ::apache::thrift::TConnectionInfo& connInfo) override;
   void releaseHandler(ExecutorIf* handler) override;
-
-  const std::vector<CommandInfo>& FinishAndGetCommandsInfo();
+  void Finish();
 
  private:
   std::unique_ptr<DllInjector> dll_injector_;
-  std::vector<CommandInfo> commands_info_;
+  ExecutingEngine* executing_engine_;
   int active_handlers_count_;
   std::condition_variable handler_released_;
   std::mutex instance_lock_;

@@ -11,13 +11,16 @@
 
 #include "base/scoped_handle.h"
 #include "gen-cpp/Executor.h"
-#include "stexecutor/command_info.h"
+#include "stexecutor/executed_command_info.h"
 
 class DllInjector;
+class ExecutingEngine;
 
 class ExecutorImpl : public ExecutorIf {
  public:
-  explicit ExecutorImpl(DllInjector* dll_injector);
+  ExecutorImpl(
+      DllInjector* dll_injector,
+      ExecutingEngine* executing_engine);
   void Initialize(
       const int32_t current_pid,
       const std::string& command_line,
@@ -27,19 +30,21 @@ class ExecutorImpl : public ExecutorIf {
   void PushStdOutput(
       const StdHandles::type handle, const std::string& data) override;
   void OnBeforeProcessCreate(
+      CacheHitInfo& result,
       const std::string& exe_path,
       const std::vector<std::string>& arguments,
       const std::string& startup_dir,
       const std::vector<std::string>& environment) override;
   void OnSuspendedProcessCreated(const int32_t child_pid) override;
   void FillExitCode();
-  const CommandInfo& command_info() const {
+  const ExecutedCommandInfo& command_info() const {
     return command_info_;
   }
 
  private:
   DllInjector* dll_injector_;
-  CommandInfo command_info_;
+  ExecutingEngine* executing_engine_;
+  ExecutedCommandInfo command_info_;
   base::ScopedHandle process_handle_;
 };
 

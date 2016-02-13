@@ -5,44 +5,27 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <iostream>
 
 #include "base/filesystem_utils.h"
 #include "base/init_logging.h"
 #include "base/sthook_constants.h"
+#include "boost/program_options.hpp"
 #include "boost/smart_ptr/make_shared.hpp"
-#include "boost/archive/xml_oarchive.hpp"
-#include "boost/serialization/vector.hpp"
-#include "boost/serialization/unordered_set.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "log4cplus/win32debugappender.h"
-#include "stexecutor/command_info.h"
+#include "stexecutor/build_directory_state.h"
 #include "stexecutor/dll_injector.h"
+#include "stexecutor/executed_command_info.h"
+#include "stexecutor/executing_engine.h"
 #include "stexecutor/executor_factory.h"
+#include "stexecutor/filesystem_files_storage.h"
+#include "stexecutor/rules_mappers/in_memory_rules_mapper.h"
 #include "sthook/sthook_communication.h"
 #include "thrift/server/TThreadedServer.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TServerSocket.h"
-
-namespace boost {
-namespace serialization {
-
-template<typename Archive>
-void serialize(
-    Archive& ar, CommandInfo& command, const unsigned int version) { // NOLINT
-  ar & BOOST_SERIALIZATION_NVP(command.exit_code);
-  ar & BOOST_SERIALIZATION_NVP(command.id);
-  ar & BOOST_SERIALIZATION_NVP(command.startup_directory);
-  ar & BOOST_SERIALIZATION_NVP(command.command_line);
-  ar & BOOST_SERIALIZATION_NVP(command.input_files);
-  ar & BOOST_SERIALIZATION_NVP(command.output_files);
-  ar & BOOST_SERIALIZATION_NVP(command.child_command_ids);
-  ar & BOOST_SERIALIZATION_NVP(command.result_stdout);
-  ar & BOOST_SERIALIZATION_NVP(command.result_stderr);
-}
-
-}  // namespace serialization
-}  // namespace boost
 
 namespace {
 
@@ -95,22 +78,41 @@ boost::filesystem::path GetDumpFileName() {
   return executable_dir / kDumpFileName;
 }
 
-void GenerateCommandsDump(
-    const std::vector<CommandInfo>& commands,
-    const boost::filesystem::path& dump_path) {
-  std::ofstream stream(dump_path.string());
-  boost::archive::xml_oarchive archive(stream);
-  archive & BOOST_SERIALIZATION_NVP(commands);
-}
-
 }  // namespace
 
-int main(int argc, char* argv) {
+int main(int argc, char* argv[]) {
   using apache::thrift::transport::TServerSocket;
   using apache::thrift::transport::TBufferedTransportFactory;
   using apache::thrift::protocol::TBinaryProtocolFactory;
-
   base::InitLogging();
+
+  boost::program_options::options_description desc("Allowed options");
+  desc.add_options()
+      ("cache_dir",
+       boost::program_options::value<std::string>(),
+       "Directory with cached build results");
+      ("build_dir",
+       boost::program_options::value<std::string>(),
+        "Directory where build will run");
+  boost::program_options::variables_map variables;
+  boost::program_options::store(
+      boost::program_options::parse_command_line(argc, argv, desc),
+      variables);
+  boost::program_options::notify(variables);
+  boost::filesystem::path cache_dir_path, build_dir_path;
+  if (variables.count("cache_dir")) {
+    cache_dir_path = variables["cache_dir"].as<std::string>();
+  } else {
+    std::cerr << "cache_dir not set" << std::endl;
+    return 1;
+  }
+  if (variables.count("build_dir")) {
+    build_dir_path = variables["build_dir"].as<std::string>();
+  } else {
+    std::cerr << "build_dir not set" << std::endl;
+    return 1;
+  }
+
   boost::filesystem::path current_executable_dir =
       base::GetCurrentExecutableDir();
   if (current_executable_dir.empty()) {
@@ -126,9 +128,20 @@ int main(int argc, char* argv) {
       current_executable_dir / base::kStHookDllName64Bit,
       load_library_addr32,
       load_library_addr64);
-
+  std::unique_ptr<FilesStorage> file_storage(
+      new FilesystemFilesStorage(cache_dir_path));
+  std::unique_ptr<rules_mappers::RulesMapper> rules_mapper(
+      new rules_mappers::InMemoryRulesMapper());
+  std::unique_ptr<BuildDirectoryState> build_dir_state(
+      new BuildDirectoryState(build_dir_path));
+  std::unique_ptr<ExecutingEngine> executing_engine(new ExecutingEngine(
+      std::move(file_storage),
+      std::move(rules_mapper),
+      std::move(build_dir_state)));
   boost::shared_ptr<ExecutorFactory> executor_factory =
-      boost::make_shared<ExecutorFactory>(std::move(dll_injector));
+      boost::make_shared<ExecutorFactory>(
+          std::move(dll_injector),
+          executing_engine.get());
   g_server = std::make_unique<ServerType>(
       boost::make_shared<ExecutorProcessorFactory>(executor_factory),
       boost::make_shared<TServerSocket>(sthook::GetExecutorPort()),
@@ -143,7 +156,6 @@ int main(int argc, char* argv) {
   boost::filesystem::path dump_path = GetDumpFileName();
   std::cout << "Done. Writing commands dump into " << dump_path.string()
             << std::endl;
-  GenerateCommandsDump(
-      executor_factory->FinishAndGetCommandsInfo(), dump_path);
+  executor_factory->Finish();
   return 0;
 }
