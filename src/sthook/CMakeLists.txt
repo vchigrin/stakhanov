@@ -17,7 +17,10 @@ else()
 endif()
 
 add_custom_command(
-  OUTPUT gen-cpp/Executor.cpp gen-cpp/Executor.h
+  OUTPUT
+    gen-cpp/Executor.cpp
+    gen-cpp/stexecutor_types.cpp
+    gen-cpp/Executor.h
   COMMAND thrift-compiler --gen cpp -r
     ${CMAKE_CURRENT_SOURCE_DIR}/stexecutor.thrift
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/stexecutor.thrift
