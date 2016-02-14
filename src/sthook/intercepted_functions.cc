@@ -20,11 +20,14 @@
 #include "log4cplus/loggingmacros.h"
 #include "sthook/functions_interceptor.h"
 #include "sthook/sthook_communication.h"
+#include "stproxy/stproxy_communication.h"
 #include "thrift/protocol/TBinaryProtocol.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TSocket.h"
 
 namespace {
+
+const wchar_t kStProxyExeName[] = L"stproxy.exe";
 
 typedef BOOL (WINAPI *LPCREATE_PROCESS_W)(
     LPCWSTR application_name,
@@ -80,6 +83,17 @@ LPWRITE_FILE_EX g_original_WriteFileEx;
 LPSET_STD_HANDLE g_original_SetStdHandle;
 HANDLE g_stdout;
 HANDLE g_stderr;
+std::wstring g_stproxy_path;
+
+std::wstring InitStProxyPath(HMODULE current_module) {
+  std::vector<wchar_t> buffer(MAX_PATH + 1);
+  GetModuleFileName(current_module, &buffer[0], MAX_PATH);
+  buffer[MAX_PATH] = L'\0';
+  boost::filesystem::path cur_dll_path(&buffer[0]);
+  boost::filesystem::path result =
+      cur_dll_path.parent_path() / kStProxyExeName;
+  return result.native();
+}
 
 sthook::FunctionsInterceptor* GetInterceptor() {
   // Will leak, but it seems to be less evil then strange crashes
@@ -254,6 +268,99 @@ std::vector<std::string> GetEnvironmentStringsAsUTF8() {
   return result;
 }
 
+HANDLE PrepareFileMapping(const CacheHitInfo& cache_hit_info) {
+  DWORD required_file_mapping_size =
+      sizeof(STPROXY_SECTION_HEADER) +
+      static_cast<DWORD>(cache_hit_info.result_stdout.length() +
+                         cache_hit_info.result_stderr.length());
+  HANDLE file_mapping_handle = CreateFileMapping(
+      INVALID_HANDLE_VALUE,
+      NULL,
+      PAGE_READWRITE,
+      0,
+      required_file_mapping_size,
+      NULL);
+  if (!file_mapping_handle) {
+    DWORD error_code = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "CreateFileMapping failed, error " << error_code);
+    return NULL;
+  }
+  void* file_mapping_data = MapViewOfFile(
+      file_mapping_handle,
+      FILE_MAP_WRITE,
+      0, 0,
+      required_file_mapping_size);
+  if (!file_mapping_data) {
+    DWORD error_code = GetLastError();
+    CloseHandle(file_mapping_handle);
+    LOG4CPLUS_ERROR(logger_, "MapViewOfFile failed, error " << error_code);
+    return NULL;
+  }
+  STPROXY_SECTION_HEADER* header = static_cast<STPROXY_SECTION_HEADER*>(
+      file_mapping_data);
+  header->exit_code = cache_hit_info.exit_code;
+  header->stdout_byte_size = static_cast<DWORD>(
+      cache_hit_info.result_stdout.length());
+  header->stderr_byte_size = static_cast<DWORD>(
+      cache_hit_info.result_stderr.length());
+  uint8_t* dest_data = static_cast<uint8_t*>(file_mapping_data);
+  dest_data += sizeof(STPROXY_SECTION_HEADER);
+  memcpy(dest_data,
+         cache_hit_info.result_stdout.c_str(),
+         cache_hit_info.result_stdout.length());
+  dest_data += cache_hit_info.result_stdout.length();
+  memcpy(dest_data,
+         cache_hit_info.result_stderr.c_str(),
+         cache_hit_info.result_stderr.length());
+  UnmapViewOfFile(file_mapping_data);
+  return file_mapping_handle;
+}
+
+bool CreateProxyProcess(
+    const CacheHitInfo& cache_hit_info,
+    DWORD creation_flags,
+    HANDLE std_input_handle,
+    HANDLE std_output_handle,
+    HANDLE std_error_handle,
+    PROCESS_INFORMATION* process_information) {
+  HANDLE file_mapping_handle = PrepareFileMapping(cache_hit_info);
+  if (!file_mapping_handle) {
+    return false;
+  }
+  std::wostringstream buffer;
+  buffer << std::hex << file_mapping_handle;
+  std::wstring handle_str = buffer.str();
+  std::vector<wchar_t> command_line;
+  // stproxy_path + 1 space + file_mapping_handle + zero terminator.
+  command_line.reserve(g_stproxy_path.length() + 1 + handle_str.length() + 1);
+  std::copy(
+      g_stproxy_path.begin(), g_stproxy_path.end(),
+      std::back_inserter(command_line));
+  command_line.push_back(L' ');
+  std::copy(
+      handle_str.begin(), handle_str.end(),
+      std::back_inserter(command_line));
+  command_line.push_back(L'\0');
+  STARTUPINFO startup_info = {0};
+  startup_info.cb = sizeof(startup_info);
+  startup_info.hStdInput = std_input_handle;
+  startup_info.hStdOutput = std_output_handle;
+  startup_info.hStdError = std_error_handle;
+  BOOL result = g_original_CreateProcessW(
+        NULL,
+        &command_line[0],
+        NULL,
+        NULL,
+        TRUE,  // Inherit handles
+        creation_flags,
+        NULL,
+        NULL,
+        &startup_info,
+        process_information);
+  CloseHandle(file_mapping_handle);
+  return result;
+}
+
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
 BOOL CreateProcessImpl(
     FUNCTION actual_function,
@@ -305,18 +412,28 @@ BOOL CreateProcessImpl(
       arguments_utf8,
       startup_dir_utf8,
       GetEnvironmentStringsAsUTF8());
-
-  BOOL result = actual_function(
-      application_name,
-      command_line,
-      process_attributes,
-      thread_attributes,
-      inherit_handles,
-      creation_flags,
-      environment,
-      current_directory,
-      startup_info,
-      process_information);
+  BOOL result = FALSE;
+  if (cache_hit_info.cache_hit) {
+    result = CreateProxyProcess(
+        cache_hit_info,
+        creation_flags,
+        startup_info->hStdInput,
+        startup_info->hStdOutput,
+        startup_info->hStdError,
+        process_information);
+  } else {
+    result = actual_function(
+        application_name,
+        command_line,
+        process_attributes,
+        thread_attributes,
+        inherit_handles,
+        creation_flags,
+        environment,
+        current_directory,
+        startup_info,
+        process_information);
+  }
   if (!result)
     return result;
   GetExecutor()->OnSuspendedProcessCreated(process_information->dwProcessId);
@@ -479,6 +596,7 @@ bool InstallHooks(HMODULE current_module) {
   LOG4CPLUS_ASSERT(logger_, g_original_WriteFile);
   LOG4CPLUS_ASSERT(logger_, g_original_WriteFileEx);
   LOG4CPLUS_ASSERT(logger_, g_original_SetStdHandle);
+  g_stproxy_path = InitStProxyPath(current_module);
   return GetInterceptor()->Hook(intercepts, current_module);
 }
 
