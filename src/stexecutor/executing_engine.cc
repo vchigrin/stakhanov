@@ -87,12 +87,17 @@ void ExecutingEngine::SaveCommandResults(
     output_files.push_back(rules_mappers::FileInfo(rel_path, storage_id));
   }
   for (const boost::filesystem::path& input_path : command_info.input_files) {
-    std::string content_id = build_dir_state_->GetFileContentId(input_path);
-    if (content_id.empty()) {
-      LOG4CPLUS_WARN(logger_, "File is not storage file " << input_path);
-    }
     boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
         input_path);
+    if (rel_path.empty()) {
+      LOG4CPLUS_INFO(logger_, "File is not storage file " << input_path);
+      continue;
+    }
+    std::string content_id = build_dir_state_->GetFileContentId(rel_path);
+    if (content_id.empty()) {
+      LOG4CPLUS_ERROR(logger_, "Failed hash input file " << input_path);
+      continue;
+    }
     input_files.push_back(rules_mappers::FileInfo(rel_path, content_id));
   }
   rules_mapper_->AddRule(

@@ -86,7 +86,7 @@ std::string BytesToHexString(const std::vector<uint8_t>& bytes) {
   std::ostringstream buffer;
   buffer << std::hex;
   for (uint8_t byte : bytes) {
-    buffer << byte;
+    buffer << static_cast<int>(byte);
   }
   return buffer.str();
 }
