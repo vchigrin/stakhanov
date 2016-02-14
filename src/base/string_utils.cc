@@ -51,7 +51,7 @@ std::wstring ToWideFromANSI(const std::string& ansi_string) {
       ansi_string.c_str(),
       -1,
       &buffer[0],
-      buffer.size());
+      static_cast<DWORD>(buffer.size()));
   if (result == 0) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "MultiByteToWideChar failed, error " << error);

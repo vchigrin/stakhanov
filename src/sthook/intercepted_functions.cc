@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "base/filesystem_utils.h"
+#include "base/scoped_handle.h"
 #include "base/string_utils.h"
 #include "base/filesystem_utils_win.h"
 #include "boost/filesystem.hpp"
@@ -268,33 +269,32 @@ std::vector<std::string> GetEnvironmentStringsAsUTF8() {
   return result;
 }
 
-HANDLE PrepareFileMapping(const CacheHitInfo& cache_hit_info) {
+base::ScopedHandle PrepareFileMapping(const CacheHitInfo& cache_hit_info) {
   DWORD required_file_mapping_size =
       sizeof(STPROXY_SECTION_HEADER) +
       static_cast<DWORD>(cache_hit_info.result_stdout.length() +
                          cache_hit_info.result_stderr.length());
-  HANDLE file_mapping_handle = CreateFileMapping(
+  base::ScopedHandle file_mapping_handle(CreateFileMapping(
       INVALID_HANDLE_VALUE,
       NULL,
       PAGE_READWRITE,
       0,
       required_file_mapping_size,
-      NULL);
-  if (!file_mapping_handle) {
+      NULL));
+  if (!file_mapping_handle.IsValid()) {
     DWORD error_code = GetLastError();
     LOG4CPLUS_ERROR(logger_, "CreateFileMapping failed, error " << error_code);
-    return NULL;
+    return base::ScopedHandle();
   }
   void* file_mapping_data = MapViewOfFile(
-      file_mapping_handle,
+      file_mapping_handle.Get(),
       FILE_MAP_WRITE,
       0, 0,
       required_file_mapping_size);
   if (!file_mapping_data) {
     DWORD error_code = GetLastError();
-    CloseHandle(file_mapping_handle);
     LOG4CPLUS_ERROR(logger_, "MapViewOfFile failed, error " << error_code);
-    return NULL;
+    return base::ScopedHandle();
   }
   STPROXY_SECTION_HEADER* header = static_cast<STPROXY_SECTION_HEADER*>(
       file_mapping_data);
@@ -323,12 +323,11 @@ bool CreateProxyProcess(
     HANDLE std_output_handle,
     HANDLE std_error_handle,
     PROCESS_INFORMATION* process_information) {
-  HANDLE file_mapping_handle = PrepareFileMapping(cache_hit_info);
-  if (!file_mapping_handle) {
+  base::ScopedHandle file_mapping_handle = PrepareFileMapping(cache_hit_info);
+  if (!file_mapping_handle.IsValid())
     return false;
-  }
   std::wostringstream buffer;
-  buffer << std::hex << file_mapping_handle;
+  buffer << std::hex << file_mapping_handle.Get();
   std::wstring handle_str = buffer.str();
   std::vector<wchar_t> command_line;
   // stproxy_path + 1 space + file_mapping_handle + zero terminator.
@@ -357,7 +356,6 @@ bool CreateProxyProcess(
         NULL,
         &startup_info,
         process_information);
-  CloseHandle(file_mapping_handle);
   return result;
 }
 
