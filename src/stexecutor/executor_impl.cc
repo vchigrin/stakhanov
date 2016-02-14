@@ -55,15 +55,7 @@ bool ExecutorImpl::HookedCreateFile(
   return true;
 }
 
-void ExecutorImpl::Initialize(
-    const int32_t current_pid,
-    const std::string& command_line,
-    const std::string& startup_directory) {
-  /*
-  command_info_.id = current_pid;
-  command_info_.command_line = command_line;
-  command_info_.startup_directory = startup_directory;
-  */
+void ExecutorImpl::Initialize(const int32_t current_pid) {
   process_handle_ = base::ScopedHandle(
       OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE,
       FALSE, current_pid));
@@ -71,10 +63,15 @@ void ExecutorImpl::Initialize(
     DWORD error_code = GetLastError();
     LOG4CPLUS_ERROR(logger_, "OpenProcess failed. Error " << error_code);
   }
+  command_info_.command_id = executing_engine_->TakeCommandIDForPID(
+      current_pid);
 }
 
-void ExecutorImpl::OnSuspendedProcessCreated(const int32_t child_pid) {
+void ExecutorImpl::OnSuspendedProcessCreated(
+    const int32_t child_pid,
+    const int32_t executor_command_id) {
   LOG4CPLUS_INFO(logger_, "Created process " << child_pid);
+  executing_engine_->AssociatePIDWithCommandId(child_pid, executor_command_id);
   if (!dll_injector_->InjectInto(child_pid)) {
     LOG4CPLUS_ERROR(logger_, "Failed inject dll into process " << child_pid);
   }
@@ -98,6 +95,7 @@ void ExecutorImpl::OnBeforeProcessCreate(
   result.exit_code = response.exit_code();
   result.result_stdout = response.result_stdout();
   result.result_stderr = response.result_stderr();
+  result.executor_command_id = response.real_command_id();
 }
 
 void ExecutorImpl::PushStdOutput(
@@ -131,4 +129,5 @@ void ExecutorImpl::FillExitCode() {
     }
   }
   command_info_.exit_code = exit_code;
+  executing_engine_->SaveCommandResults(command_info_);
 }

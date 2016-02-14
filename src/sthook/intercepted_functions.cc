@@ -434,7 +434,9 @@ BOOL CreateProcessImpl(
   }
   if (!result)
     return result;
-  GetExecutor()->OnSuspendedProcessCreated(process_information->dwProcessId);
+  GetExecutor()->OnSuspendedProcessCreated(
+      process_information->dwProcessId,
+      cache_hit_info.executor_command_id);
   if (!request_suspended)
     ResumeThread(process_information->hThread);
   return result;
@@ -599,12 +601,7 @@ bool InstallHooks(HMODULE current_module) {
 }
 
 void Initialize() {
-  boost::filesystem::path current_path = boost::filesystem::current_path();
-  std::string current_path_utf8 = current_path.string(
-      std::codecvt_utf8_utf16<wchar_t>());
-  std::string command_line_utf8 = base::ToUTF8FromWide(GetCommandLine());
-  GetExecutor()->Initialize(
-      GetCurrentProcessId(), command_line_utf8, current_path_utf8);
+  GetExecutor()->Initialize(GetCurrentProcessId());
   g_stdout = GetStdHandle(STD_OUTPUT_HANDLE);
   g_stderr = GetStdHandle(STD_ERROR_HANDLE);
   LOG4CPLUS_ASSERT(logger_, g_stdout);

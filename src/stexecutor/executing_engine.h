@@ -36,6 +36,8 @@ class ExecutingEngine {
   ProcessCreationResponse AttemptCacheExecute(
       const ProcessCreationRequest& resuest);
   void SaveCommandResults(const ExecutedCommandInfo& command_info);
+  void AssociatePIDWithCommandId(int32_t pid, int command_id);
+  int TakeCommandIDForPID(int32_t pid);
 
  private:
   std::mutex instance_lock_;
@@ -45,6 +47,7 @@ class ExecutingEngine {
   std::unique_ptr<BuildDirectoryState> build_dir_state_;
   std::unordered_map<
       int, std::unique_ptr<ProcessCreationRequest>> running_commands_;
+  std::unordered_map<int32_t, int> pid_to_command_id_;
   int next_command_id_;
 };
 

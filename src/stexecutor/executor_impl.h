@@ -21,10 +21,7 @@ class ExecutorImpl : public ExecutorIf {
   ExecutorImpl(
       DllInjector* dll_injector,
       ExecutingEngine* executing_engine);
-  void Initialize(
-      const int32_t current_pid,
-      const std::string& command_line,
-      const std::string& startup_directory) override;
+  void Initialize(const int32_t current_pid) override;
   bool HookedCreateFile(
       const std::string& abs_path, const bool for_writing) override;
   void PushStdOutput(
@@ -35,7 +32,9 @@ class ExecutorImpl : public ExecutorIf {
       const std::vector<std::string>& arguments,
       const std::string& startup_dir,
       const std::vector<std::string>& environment) override;
-  void OnSuspendedProcessCreated(const int32_t child_pid) override;
+  void OnSuspendedProcessCreated(
+      const int32_t child_pid,
+      const int32_t executor_command_id) override;
   void FillExitCode();
   const ExecutedCommandInfo& command_info() const {
     return command_info_;

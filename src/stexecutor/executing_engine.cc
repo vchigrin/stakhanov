@@ -27,7 +27,8 @@ ExecutingEngine::ExecutingEngine(
     std::unique_ptr<BuildDirectoryState> build_dir_state)
      : files_storage_(std::move(files_storage)),
        rules_mapper_(std::move(rules_mapper)),
-       build_dir_state_(std::move(build_dir_state)) {
+       build_dir_state_(std::move(build_dir_state)),
+       next_command_id_(1) {
 }
 
 ExecutingEngine::~ExecutingEngine() {
@@ -104,4 +105,21 @@ void ExecutingEngine::SaveCommandResults(
               command_info.result_stdout,
               command_info.result_stderr)));
   running_commands_.erase(it);
+}
+
+void ExecutingEngine::AssociatePIDWithCommandId(int32_t pid, int command_id) {
+  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  pid_to_command_id_.insert(std::make_pair(pid, command_id));
+}
+
+int ExecutingEngine::TakeCommandIDForPID(int32_t pid) {
+  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  auto it = pid_to_command_id_.find(pid);
+  if (it == pid_to_command_id_.end()) {
+    LOG4CPLUS_ERROR(logger_, "No command id for pid " << pid);
+    return 0;
+  }
+  int result = it->second;
+  pid_to_command_id_.erase(it);
+  return result;
 }
