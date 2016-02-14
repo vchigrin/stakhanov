@@ -20,9 +20,9 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutorImpl");
 boost::filesystem::path NormalizePath(const std::string& abs_path) {
   if (abs_path.find(':') == std::string::npos) {
     // Passed in path are always absolute. If it does not contain column,
-    // than usually means that this is reserved file name lie "con", "nul",
+    // than usually means that this is reserved file name like "con", "nul",
     // or some pipe name. Just ignore them.
-    LOG4CPLUS_INFO(logger_, "Invalid special path " << abs_path.c_str());
+    LOG4CPLUS_INFO(logger_, "Met special path " << abs_path.c_str());
     return boost::filesystem::path();
   }
   std::string lower_path = base::UTF8ToLower(abs_path);

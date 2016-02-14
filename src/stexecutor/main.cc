@@ -30,7 +30,6 @@
 namespace {
 
 const wchar_t kGetLoadLibraryAddrExecutable[] = L"get_load_library_addr32.exe";
-const wchar_t kDumpFileName[] = L"build_commands.xml";
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
@@ -73,11 +72,6 @@ BOOL WINAPI ConsoleHandler(DWORD ctrl_type) {
   return FALSE;
 }
 
-boost::filesystem::path GetDumpFileName() {
-  boost::filesystem::path executable_dir = base::GetCurrentExecutableDir();
-  return executable_dir / kDumpFileName;
-}
-
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -88,30 +82,31 @@ int main(int argc, char* argv[]) {
 
   boost::program_options::options_description desc("Allowed options");
   desc.add_options()
+      ("help", "Print help message")
       ("cache_dir",
-       boost::program_options::value<std::string>(),
-       "Directory with cached build results");
+       boost::program_options::value<boost::filesystem::path>()->required(),
+       "Directory with cached build results")
       ("build_dir",
-       boost::program_options::value<std::string>(),
+       boost::program_options::value<boost::filesystem::path>()->required(),
         "Directory where build will run");
   boost::program_options::variables_map variables;
   boost::program_options::store(
       boost::program_options::parse_command_line(argc, argv, desc),
       variables);
-  boost::program_options::notify(variables);
-  boost::filesystem::path cache_dir_path, build_dir_path;
-  if (variables.count("cache_dir")) {
-    cache_dir_path = variables["cache_dir"].as<std::string>();
-  } else {
-    std::cerr << "cache_dir not set" << std::endl;
+  if (variables.count("help")) {
+    std::cout << desc;
+    return 0;
+  }
+  try {
+    boost::program_options::notify(variables);
+  } catch (const std::exception& ex) {
+    std::cerr << ex.what() << std::endl;
     return 1;
   }
-  if (variables.count("build_dir")) {
-    build_dir_path = variables["build_dir"].as<std::string>();
-  } else {
-    std::cerr << "build_dir not set" << std::endl;
-    return 1;
-  }
+  boost::filesystem::path cache_dir_path =
+      variables["cache_dir"].as<boost::filesystem::path>();
+  boost::filesystem::path build_dir_path =
+      variables["build_dir"].as<boost::filesystem::path>();
 
   boost::filesystem::path current_executable_dir =
       base::GetCurrentExecutableDir();
@@ -120,6 +115,9 @@ int main(int argc, char* argv[]) {
     return 1;
   }
   uint32_t load_library_addr32 = GetLoadLibraryAddr32(current_executable_dir);
+  if (!load_library_addr32) {
+    return 1;
+  }
   // Assumed, that in case we want Stakhanov to work on 64-bit system, that
   // we will use 64-bit executor.
   uint64_t load_library_addr64 = reinterpret_cast<uint64_t>(&LoadLibraryW);
@@ -153,9 +151,6 @@ int main(int argc, char* argv[]) {
   g_server->serve();
   SetConsoleCtrlHandler(&ConsoleHandler, FALSE);
   g_server.reset();
-  boost::filesystem::path dump_path = GetDumpFileName();
-  std::cout << "Done. Writing commands dump into " << dump_path.string()
-            << std::endl;
   executor_factory->Finish();
   return 0;
 }
