@@ -75,6 +75,13 @@ void ExecutingEngine::SaveCommandResults(
   const ProcessCreationRequest* request = it->second.get();
   std::vector<rules_mappers::FileInfo> output_files, input_files;
   for (const boost::filesystem::path& output_path : command_info.output_files) {
+    boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
+        output_path);
+    if (rel_path.empty()) {
+      LOG4CPLUS_INFO(
+          logger_, "Output file is not storage file " << output_path);
+      continue;
+    }
     std::string storage_id = files_storage_->StoreFile(output_path);
     if (storage_id.empty()) {
       LOG4CPLUS_ERROR(
@@ -82,15 +89,13 @@ void ExecutingEngine::SaveCommandResults(
           "Failed save file to storage, skip command results caching ");
       return;
     }
-    boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
-        output_path);
     output_files.push_back(rules_mappers::FileInfo(rel_path, storage_id));
   }
   for (const boost::filesystem::path& input_path : command_info.input_files) {
     boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
         input_path);
     if (rel_path.empty()) {
-      LOG4CPLUS_INFO(logger_, "File is not storage file " << input_path);
+      LOG4CPLUS_INFO(logger_, "Input file is not storage file " << input_path);
       continue;
     }
     std::string content_id = build_dir_state_->GetFileContentId(rel_path);
