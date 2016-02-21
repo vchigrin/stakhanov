@@ -29,6 +29,8 @@ FilesystemFilesStorage::FilesystemFilesStorage(
 std::string FilesystemFilesStorage::StoreFile(
     const boost::filesystem::path& abs_file_path) {
   std::string file_id = GetFileHash(abs_file_path);
+  LOG4CPLUS_DEBUG(logger_, "Storing file " << abs_file_path.string().c_str()
+                        << " file_id " << file_id.c_str());
   if (file_id.empty())
     return file_id;
   std::string top_dir_name = file_id.substr(0, kTopDirCharacters);
@@ -45,10 +47,11 @@ std::string FilesystemFilesStorage::StoreFile(
   // TODO(vchigrin): Consider usage of hard links.
   try {
     boost::filesystem::copy_file(abs_file_path, dest_path);
-  } catch (const std::exception& ex) {
+  } catch (const boost::filesystem::filesystem_error& ex) {
     LOG4CPLUS_ERROR(
         logger_, "Failed copy file " << abs_file_path.c_str()
-            << " Error message " << ex.what());
+            << " Error message " << ex.what()
+            << " Error code " << ex.code());
     return std::string();
   }
   return file_id;
@@ -57,6 +60,8 @@ std::string FilesystemFilesStorage::StoreFile(
 bool FilesystemFilesStorage::GetFileFromStorage(
     const std::string& storage_id,
     const boost::filesystem::path& dest_path) {
+  LOG4CPLUS_DEBUG(logger_, "Retrieving file to " << dest_path.string().c_str()
+                        << " file_id " << storage_id.c_str());
   if (storage_id.length() <= kTopDirCharacters) {
     LOG4CPLUS_ERROR(logger_, "Invalid storage id " << storage_id.c_str());
     return false;
@@ -66,17 +71,17 @@ bool FilesystemFilesStorage::GetFileFromStorage(
   boost::filesystem::path src_path =
       storage_dir_ / top_dir_name / object_name;
   if (!boost::filesystem::exists(src_path)) {
-    LOG4CPLUS_ERROR(
-        logger_, "Object doesn't exist " << src_path.c_str());
+    LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << src_path.c_str());
     return false;
   }
   // TODO(vchigrin): Consider usage of hard links.
   try {
     boost::filesystem::copy_file(src_path, dest_path);
-  } catch (const std::exception& ex) {
+  } catch (const boost::filesystem::filesystem_error& ex) {
     LOG4CPLUS_ERROR(
         logger_, "Failed copy file " << src_path.c_str()
-            << " Error message " << ex.what());
+              << " Error message " << ex.what()
+              << " Error code " << ex.code());
     return false;
   }
   return true;

@@ -105,6 +105,9 @@ void ExecutingEngine::SaveCommandResults(
     }
     input_files.push_back(rules_mappers::FileInfo(rel_path, content_id));
   }
+  LOG4CPLUS_INFO(logger_, "Saving command with "
+                       << input_files.size() << " input files and "
+                       << output_files.size() << " output files");
   rules_mapper_->AddRule(
       *request,
       input_files,
