@@ -174,7 +174,9 @@ NTSTATUS NTAPI NewNtCreateFile(
         name_str = name_str.substr(0, name_str.length() - 1);
       name_str = base::ToLongPathName(name_str);
       DWORD attributes = ::GetFileAttributesW(name_str.c_str());
-      if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+      // It is OK for attributes to be invalid, for newly created file.
+      if (attributes == INVALID_FILE_ATTRIBUTES ||
+          (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
         // Don't care about directories.
         std::string abs_path_utf8 = base::ToUTF8FromWide(name_str);
         executor->HookedCreateFile(
