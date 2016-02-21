@@ -19,4 +19,22 @@ boost::filesystem::path GetCurrentExecutableDir() {
   return exe_path.parent_path();
 }
 
+bool IsAncestorOfFile(
+    const boost::filesystem::path& may_be_ancesor_path,
+    const boost::filesystem::path& object_path) {
+  size_t ancestor_path_len = std::distance(
+      may_be_ancesor_path.begin(), may_be_ancesor_path.end());
+  size_t object_path_len = std::distance(
+      object_path.begin(), object_path.end());
+  if (ancestor_path_len > object_path_len) {
+    // Full path of the object must be longer then or equal to the
+    // ancestor path length.
+    return false;
+  }
+
+  return std::equal(
+      may_be_ancesor_path.begin(),
+      may_be_ancesor_path.end(), object_path.begin());
+}
+
 }  // namespace base

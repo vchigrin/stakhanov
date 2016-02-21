@@ -66,11 +66,16 @@ std::string ToUTF8FromANSI(const std::string& ansi_string) {
 
 std::string UTF8ToLower(const std::string& src) {
   std::wstring wide_str = ToWideFromUTF8(src);
+  return ToUTF8FromWide(WideToLower(wide_str));
+}
+
+std::wstring WideToLower(const std::wstring& src) {
   std::locale c_locale;
-  for (auto& symbol : wide_str) {
+  std::wstring result = src;
+  for (auto& symbol : result) {
     symbol = std::tolower(symbol, c_locale);
   }
-  return ToUTF8FromWide(wide_str);
+  return result;
 }
 
 std::string ASCIIToLower(const std::string& src) {

@@ -8,6 +8,7 @@
 
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
+#include "base/filesystem_utils.h"
 #include "base/string_utils.h"
 #include "stexecutor/file_hash.h"
 #include "stexecutor/files_storage.h"
@@ -24,7 +25,7 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
 
 BuildDirectoryState::BuildDirectoryState(
     const boost::filesystem::path& dir_path)
-    : build_dir_path_(dir_path) {
+    : build_dir_path_(base::WideToLower(dir_path.string<std::wstring>())) {
 }
 
 std::string BuildDirectoryState::GetFileContentId(
@@ -51,5 +52,7 @@ bool BuildDirectoryState::TakeFileFromStorage(
 
 boost::filesystem::path BuildDirectoryState::MakeRelativePath(
     const boost::filesystem::path& abs_path) const {
+  if (!base::IsAncestorOfFile(build_dir_path_, abs_path))
+    return boost::filesystem::path();
   return abs_path.lexically_relative(build_dir_path_);
 }

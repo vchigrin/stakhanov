@@ -65,6 +65,10 @@ struct FilePathHash {
   }
 };
 
+bool IsAncestorOfFile(
+    const boost::filesystem::path& may_be_ancesor_abs_path,
+    const boost::filesystem::path& object_abs_path);
+
 }  // namespace base
 
 #endif  // BASE_FILESYSTEM_UTILS_H_

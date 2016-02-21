@@ -29,6 +29,7 @@ std::wstring ToWideFromUTF8(const std::string& utf8_string);
 std::wstring ToWideFromANSI(const std::string& ansi_string);
 std::string UTF8ToLower(const std::string& src);
 std::string ASCIIToLower(const std::string& src);
+std::wstring WideToLower(const std::wstring& src);
 
 std::string BytesToHexString(const std::vector<uint8_t>& bytes);
 }  // namespace base
