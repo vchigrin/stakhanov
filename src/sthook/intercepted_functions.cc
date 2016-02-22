@@ -390,9 +390,9 @@ BOOL CreateProcessImpl(
       std::wstring native_long_path = base::ToLongPathName(argument);
       arguments_utf8.push_back(base::ToUTF8FromWide(native_long_path));
     }
+    if (exe_path.empty() && !arguments.empty())
+      exe_path = base::AbsPathUTF8(arguments[0]);
   }
-  if (exe_path.empty() && !arguments_utf8.empty())
-    exe_path = arguments_utf8[0];
   std::string startup_dir_utf8;
   if (current_directory) {
     startup_dir_utf8 = base::ToUTF8(
