@@ -7,9 +7,17 @@
 #include <vector>
 #include <string>
 
+#include "log4cplus/logger.h"
+#include "log4cplus/loggingmacros.h"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/in_memory_request_results.h"
 #include "stexecutor/process_creation_request.h"
+
+namespace {
+
+log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
+    L"InMemoryRulesMapper");
+}
 
 namespace rules_mappers {
 
@@ -25,8 +33,11 @@ const CachedExecutionResponse* InMemoryRulesMapper::FindCachedResults(
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
   auto it = rules_.find(request_hash);
-  if (it == rules_.end())
+  if (it == rules_.end()) {
+    LOG4CPLUS_INFO(logger_, "No rule set for hash " << request_hash);
     return nullptr;
+  }
+  LOG4CPLUS_INFO(logger_, "Found rule set for hash " << request_hash);
   return it->second->FindCachedResults(build_dir_state);
 }
 
@@ -60,8 +71,12 @@ void InMemoryRulesMapper::AddRule(
   auto it = rules_.find(request_hash);
   InMemoryRequestResults* results = nullptr;
   if (it != rules_.end()) {
+    LOG4CPLUS_INFO(logger_,
+        "Already have rule set for hash " << request_hash);
     results = it->second.get();
   } else {
+    LOG4CPLUS_INFO(logger_,
+        "Creating new rule set for hash " << request_hash);
     std::unique_ptr<InMemoryRequestResults> new_results(
         new InMemoryRequestResults());
     results = new_results.get();

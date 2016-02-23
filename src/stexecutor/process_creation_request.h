@@ -42,5 +42,9 @@ class ProcessCreationRequest {
   std::vector<std::string> sorted_environment_strings_;
 };
 
+// For ease of logging.
+std::wostream& operator << (
+    std::wostream& stream, const ProcessCreationRequest& request);
+
 #endif  // STEXECUTOR_PROCESS_CREATION_REQUEST_H_
 

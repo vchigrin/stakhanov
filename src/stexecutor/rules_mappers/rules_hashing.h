@@ -44,6 +44,18 @@ class HashValue {
   uint8_t value_[kSize];
 };
 
+inline std::wostream& operator << (
+    std::wostream& stream, const HashValue& hash_val) {
+  auto flags = stream.flags();
+  stream << std::hex;
+  std::copy(
+      hash_val.data(),
+      hash_val.data() + HashValue::kSize,
+      std::ostream_iterator<uint8_t, wchar_t>(stream));
+  stream.flags(flags);
+  return stream;
+}
+
 
 inline void HashString(HashAlgorithm* hasher, const std::string& str) {
   hasher->Update(reinterpret_cast<const uint8_t*>(str.c_str()), str.length());

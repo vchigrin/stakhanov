@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "stexecutor/process_creation_request.h"
+#include "base/string_utils.h"
 
 ProcessCreationRequest::ProcessCreationRequest(
     const boost::filesystem::path& exe_path,
@@ -15,4 +16,13 @@ ProcessCreationRequest::ProcessCreationRequest(
       sorted_environment_strings_(environment_strings) {
   std::sort(
       sorted_environment_strings_.begin(), sorted_environment_strings_.end());
+}
+
+
+std::wostream& operator << (
+    std::wostream& stream, const ProcessCreationRequest& request) {
+  for (const std::string& str : request.command_line()) {
+    stream << base::ToWideFromUTF8(str) << L" ";
+  }
+  return stream;
 }

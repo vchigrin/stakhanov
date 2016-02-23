@@ -42,6 +42,8 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
       rules_mapper_->FindCachedResults(
           process_creation_request, *build_dir_state_);
   if (!execution_response) {
+    LOG4CPLUS_INFO(logger_,
+         "No cached response for " << process_creation_request);
     running_commands_.insert(
         std::make_pair(
             command_id,
@@ -49,6 +51,8 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
                 new ProcessCreationRequest(process_creation_request))));
     return ProcessCreationResponse::BuildCacheMissResponse(command_id);
   }
+  LOG4CPLUS_INFO(logger_,
+       "Using cached response for " << process_creation_request);
   for (const rules_mappers::FileInfo& file_info :
       execution_response->output_files) {
     build_dir_state_->TakeFileFromStorage(
