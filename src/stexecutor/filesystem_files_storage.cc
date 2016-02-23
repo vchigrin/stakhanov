@@ -45,13 +45,15 @@ std::string FilesystemFilesStorage::StoreFile(
   }
   dest_path /= object_name;
   // TODO(vchigrin): Consider usage of hard links.
-  try {
-    boost::filesystem::copy_file(abs_file_path, dest_path);
-  } catch (const boost::filesystem::filesystem_error& ex) {
+  boost::system::error_code error_code;
+  boost::filesystem::copy_file(
+      abs_file_path, dest_path,
+      boost::filesystem::copy_option::overwrite_if_exists,
+      error_code);
+  if (error_code) {
     LOG4CPLUS_ERROR(
         logger_, "Failed copy file " << abs_file_path.c_str()
-            << " Error message " << ex.what()
-            << " Error code " << ex.code());
+            << " Error code " << error_code);
     return std::string();
   }
   return file_id;
@@ -75,13 +77,16 @@ bool FilesystemFilesStorage::GetFileFromStorage(
     return false;
   }
   // TODO(vchigrin): Consider usage of hard links.
-  try {
-    boost::filesystem::copy_file(src_path, dest_path);
-  } catch (const boost::filesystem::filesystem_error& ex) {
+  boost::system::error_code error_code;
+  boost::filesystem::copy_file(
+    src_path,
+    dest_path,
+    boost::filesystem::copy_option::overwrite_if_exists,
+    error_code);
+  if (error_code) {
     LOG4CPLUS_ERROR(
         logger_, "Failed copy file " << src_path.c_str()
-              << " Error message " << ex.what()
-              << " Error code " << ex.code());
+              << " Error code " << error_code);
     return false;
   }
   return true;
