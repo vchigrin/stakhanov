@@ -109,18 +109,28 @@ void ExecutingEngine::SaveCommandResults(
     }
     input_files.push_back(rules_mappers::FileInfo(rel_path, content_id));
   }
-  LOG4CPLUS_INFO(logger_, "Saving command with "
-                       << input_files.size() << " input files and "
-                       << output_files.size() << " output files");
-  rules_mapper_->AddRule(
-      *request,
-      input_files,
-      std::unique_ptr<rules_mappers::CachedExecutionResponse>(
-          new rules_mappers::CachedExecutionResponse(
-              output_files,
-              command_info.exit_code,
-              command_info.result_stdout,
-              command_info.result_stderr)));
+  if (!command_info.child_command_ids.empty())  {
+    // TODO(vchigrin): Correct way of saving/analyzing commands with child ids.
+    LOG4CPLUS_INFO(logger_,
+        "Don't save command " << *request
+        << " it has " << command_info.child_command_ids.size()
+        << " child commands");
+  } else {
+    LOG4CPLUS_INFO(logger_,
+        "Saving command " << *request
+        << " it has "
+        << input_files.size() << " input files and "
+        << output_files.size() << " output files");
+    rules_mapper_->AddRule(
+        *request,
+        input_files,
+        std::unique_ptr<rules_mappers::CachedExecutionResponse>(
+            new rules_mappers::CachedExecutionResponse(
+                output_files,
+                command_info.exit_code,
+                command_info.result_stdout,
+                command_info.result_stderr)));
+  }
   running_commands_.erase(it);
 }
 
