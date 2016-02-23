@@ -276,9 +276,13 @@ base::ScopedHandle PrepareFileMapping(const CacheHitInfo& cache_hit_info) {
       sizeof(STPROXY_SECTION_HEADER) +
       static_cast<DWORD>(cache_hit_info.result_stdout.length() +
                          cache_hit_info.result_stderr.length());
+  SECURITY_ATTRIBUTES security_attributes = {0};
+  security_attributes.nLength = sizeof(security_attributes);
+  security_attributes.lpSecurityDescriptor = NULL;
+  security_attributes.bInheritHandle = TRUE;
   base::ScopedHandle file_mapping_handle(CreateFileMapping(
       INVALID_HANDLE_VALUE,
-      NULL,
+      &security_attributes,
       PAGE_READWRITE,
       0,
       required_file_mapping_size,
