@@ -357,11 +357,15 @@ bool CreateProxyProcess(
         NULL,
         NULL,
         TRUE,  // Inherit handles
-        creation_flags,
+        creation_flags & ~EXTENDED_STARTUPINFO_PRESENT,
         NULL,
         NULL,
         &startup_info,
         process_information);
+  if (!result) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "Failed  create proxy process, error " << error);
+  }
   return result;
 }
 
