@@ -17,8 +17,22 @@ struct FileInfo {
       : rel_file_path(rel_file_path),
         storage_content_id(storage_content_id) {}
 
+  bool operator == (const FileInfo& second) const {
+    return rel_file_path == second.rel_file_path &&
+        storage_content_id == second.storage_content_id;
+  }
+
   boost::filesystem::path rel_file_path;
   std::string storage_content_id;
+};
+
+struct FileInfoHasher {
+  size_t operator()(const FileInfo& val) const {
+    std::hash<std::string> hasher;
+    size_t path_hash = hasher(val.rel_file_path.generic_string());
+    size_t content_hash = hasher(val.storage_content_id);
+    return path_hash ^ content_hash;
+  }
 };
 
 }  // namespace rules_mappers

@@ -71,7 +71,9 @@ void ExecutorImpl::OnSuspendedProcessCreated(
     const int32_t child_pid,
     const int32_t executor_command_id) {
   LOG4CPLUS_INFO(logger_, "Created process " << child_pid);
-  executing_engine_->AssociatePIDWithCommandId(child_pid, executor_command_id);
+  executing_engine_->AssociatePIDWithCommandId(
+      command_info_.command_id,
+      child_pid, executor_command_id);
   if (!dll_injector_->InjectInto(child_pid)) {
     LOG4CPLUS_ERROR(logger_, "Failed inject dll into process " << child_pid);
   }
@@ -90,7 +92,7 @@ void ExecutorImpl::OnBeforeProcessCreate(
       arguments,
       environment_strings);
   ProcessCreationResponse response = executing_engine_->AttemptCacheExecute(
-      creation_request);
+      command_info_.command_id, creation_request);
   result.cache_hit = response.is_cache_hit();
   result.exit_code = response.exit_code();
   result.result_stdout = response.result_stdout();

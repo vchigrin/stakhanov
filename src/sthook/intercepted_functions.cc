@@ -444,9 +444,13 @@ BOOL CreateProcessImpl(
   }
   if (!result)
     return result;
-  GetExecutor()->OnSuspendedProcessCreated(
-      process_information->dwProcessId,
-      cache_hit_info.executor_command_id);
+  if (!cache_hit_info.cache_hit) {
+    // Cache hits should not go through all pipeline with
+    // injecting interceptor DLLs, tracking files, etc.
+    GetExecutor()->OnSuspendedProcessCreated(
+        process_information->dwProcessId,
+        cache_hit_info.executor_command_id);
+  }
   if (!request_suspended)
     ResumeThread(process_information->hThread);
   return result;

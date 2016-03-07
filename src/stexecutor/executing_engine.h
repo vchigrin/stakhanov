@@ -9,18 +9,22 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "base/scoped_handle.h"
 #include "boost/filesystem.hpp"
 #include "stexecutor/executed_command_info.h"
 
 class BuildDirectoryState;
+class CumulativeExecutionResponseBuilder;
 class ProcessCreationRequest;
 class ProcessCreationResponse;
 class FilesStorage;
 
 namespace rules_mappers {
 class RulesMapper;
+struct CachedExecutionResponse;
+struct FileInfo;
 }
 
 // Thread-safe class, incapsulating main decision-making
@@ -34,19 +38,36 @@ class ExecutingEngine {
   ~ExecutingEngine();
 
   ProcessCreationResponse AttemptCacheExecute(
+      int parent_command_id,
       const ProcessCreationRequest& resuest);
   void SaveCommandResults(const ExecutedCommandInfo& command_info);
-  void AssociatePIDWithCommandId(int32_t pid, int command_id);
+  void AssociatePIDWithCommandId(
+      int parent_command_id,
+      int32_t pid, int command_id);
   int TakeCommandIDForPID(int32_t pid);
 
  private:
   std::mutex instance_lock_;
 
+  void UpdateAllParentResponses(
+      int first_parent_command_id,
+      int child_command_id,
+      const std::vector<rules_mappers::FileInfo>& input_files,
+      const rules_mappers::CachedExecutionResponse& execution_response);
+
+  CumulativeExecutionResponseBuilder* GetCumulativeResponseBuilder(
+      int command_id);
   std::unique_ptr<FilesStorage> files_storage_;
   std::unique_ptr<rules_mappers::RulesMapper> rules_mapper_;
   std::unique_ptr<BuildDirectoryState> build_dir_state_;
   std::unordered_map<
       int, std::unique_ptr<ProcessCreationRequest>> running_commands_;
+  // Contains cumulative executing response for parent command.
+  std::unordered_map<
+      int, std::unique_ptr<CumulativeExecutionResponseBuilder>>
+          parent_command_id_to_results_;
+  std::unordered_map<int, int> child_command_id_to_parent_;
+
   std::unordered_map<int32_t, int> pid_to_command_id_;
   int next_command_id_;
 };

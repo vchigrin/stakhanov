@@ -8,6 +8,7 @@
 
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
+#include "stexecutor/cumulative_execution_response_builder.h"
 #include "stexecutor/files_storage.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
@@ -35,6 +36,7 @@ ExecutingEngine::~ExecutingEngine() {
 }
 
 ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
+    int parent_command_id,
     const ProcessCreationRequest& process_creation_request) {
   std::unique_lock<std::mutex> instance_lock(instance_lock_);
   const int command_id = next_command_id_++;
@@ -60,6 +62,7 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
         file_info.storage_content_id,
         file_info.rel_file_path);
   }
+  // TODO(vchigrin): Inform all parents about such cache hit.
   return ProcessCreationResponse::BuildCacheHitResponse(
       command_id,
       execution_response->exit_code,
@@ -109,13 +112,37 @@ void ExecutingEngine::SaveCommandResults(
     }
     input_files.push_back(rules_mappers::FileInfo(rel_path, content_id));
   }
+  std::unique_ptr<rules_mappers::CachedExecutionResponse> execution_response(
+      new rules_mappers::CachedExecutionResponse(
+          output_files,
+          command_info.exit_code,
+          command_info.result_stdout,
+          command_info.result_stderr));
   if (!command_info.child_command_ids.empty())  {
-    // TODO(vchigrin): Correct way of saving/analyzing commands with child ids.
-    LOG4CPLUS_INFO(logger_,
-        "Don't save command " << *request
-        << " it has " << command_info.child_command_ids.size()
-        << " child commands");
+    CumulativeExecutionResponseBuilder* builder = GetCumulativeResponseBuilder(
+        command_info.command_id);
+    builder->SetParentExecutionResponse(
+        *request,
+        input_files,
+        *execution_response);
+    if (builder->IsComplete()) {
+      LOG4CPLUS_INFO(logger_, "Parent command completed " << * request);
+      rules_mapper_->AddRule(
+          *request,
+          builder->BuildAllInputFiles(),
+          builder->BuildExecutionResponse());
+      parent_command_id_to_results_.erase(command_info.command_id);
+    }
   } else {
+    auto it_parent_id = child_command_id_to_parent_.find(
+        command_info.command_id);
+    if (it_parent_id != child_command_id_to_parent_.end()) {
+      UpdateAllParentResponses(
+          it_parent_id->second,
+          command_info.command_id,
+          input_files,
+          *execution_response);
+    }
     LOG4CPLUS_INFO(logger_,
         "Saving command " << *request
         << " it has "
@@ -124,19 +151,52 @@ void ExecutingEngine::SaveCommandResults(
     rules_mapper_->AddRule(
         *request,
         input_files,
-        std::unique_ptr<rules_mappers::CachedExecutionResponse>(
-            new rules_mappers::CachedExecutionResponse(
-                output_files,
-                command_info.exit_code,
-                command_info.result_stdout,
-                command_info.result_stderr)));
+        std::move(execution_response));
   }
   running_commands_.erase(it);
 }
 
-void ExecutingEngine::AssociatePIDWithCommandId(int32_t pid, int command_id) {
+void ExecutingEngine::UpdateAllParentResponses(
+    int first_parent_command_id,
+    int child_command_id,
+    const std::vector<rules_mappers::FileInfo>& input_files,
+    const rules_mappers::CachedExecutionResponse& execution_response) {
+  int current_command_id = first_parent_command_id;
+  while (true) {
+    CumulativeExecutionResponseBuilder* parent_builder =
+        GetCumulativeResponseBuilder(current_command_id);
+    parent_builder->AddChildResponse(
+        child_command_id,
+        input_files, execution_response);
+    auto it_parent_id = child_command_id_to_parent_.find(
+        current_command_id);
+    if (it_parent_id == child_command_id_to_parent_.end())
+      break;
+    current_command_id = it_parent_id->second;
+  }
+}
+
+void ExecutingEngine::AssociatePIDWithCommandId(
+    int parent_command_id,
+    int32_t pid, int command_id) {
   std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  LOG4CPLUS_ASSERT(
+      logger_, child_command_id_to_parent_.count(command_id) == 0);
+  child_command_id_to_parent_.insert(
+      std::make_pair(command_id, parent_command_id));
   pid_to_command_id_.insert(std::make_pair(pid, command_id));
+  // Emulate "child-parent" relations between all processes in tree,
+  // So top-level process will grab all input-output files.
+  int cur_parent_id = parent_command_id;
+  while (true) {
+    CumulativeExecutionResponseBuilder* parent_builder =
+        GetCumulativeResponseBuilder(cur_parent_id);
+    parent_builder->ChildProcessCreated(command_id);
+    auto it = child_command_id_to_parent_.find(cur_parent_id);
+    if (it == child_command_id_to_parent_.end())
+      break;
+    cur_parent_id = it->second;
+  }
 }
 
 int ExecutingEngine::TakeCommandIDForPID(int32_t pid) {
@@ -149,4 +209,17 @@ int ExecutingEngine::TakeCommandIDForPID(int32_t pid) {
   int result = it->second;
   pid_to_command_id_.erase(it);
   return result;
+}
+
+CumulativeExecutionResponseBuilder*
+ExecutingEngine::GetCumulativeResponseBuilder(int command_id) {
+  auto it = parent_command_id_to_results_.find(command_id);
+  if (it != parent_command_id_to_results_.end())
+    return it->second.get();
+  std::unique_ptr<CumulativeExecutionResponseBuilder> result(
+      new CumulativeExecutionResponseBuilder());
+  auto* result_ptr = result.get();
+  parent_command_id_to_results_.insert(std::make_pair(
+      command_id, std::move(result)));
+  return result_ptr;
 }
