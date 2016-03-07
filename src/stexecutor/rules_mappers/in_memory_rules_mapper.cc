@@ -29,7 +29,8 @@ InMemoryRulesMapper::~InMemoryRulesMapper() {
 
 const CachedExecutionResponse* InMemoryRulesMapper::FindCachedResults(
     const ProcessCreationRequest& process_creation_request,
-    const BuildDirectoryState& build_dir_state) {
+    const BuildDirectoryState& build_dir_state,
+    std::vector<FileInfo>* input_files) {
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
   auto it = rules_.find(request_hash);
@@ -38,7 +39,7 @@ const CachedExecutionResponse* InMemoryRulesMapper::FindCachedResults(
     return nullptr;
   }
   LOG4CPLUS_INFO(logger_, "Found rule set for hash " << request_hash);
-  return it->second->FindCachedResults(build_dir_state);
+  return it->second->FindCachedResults(build_dir_state, input_files);
 }
 
 

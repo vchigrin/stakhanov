@@ -31,6 +31,9 @@ struct FileInfo;
 // logic about executing child commands.
 class ExecutingEngine {
  public:
+  static const int kInvalidCommandId = -1;
+  static const int kCacheHitCommandId = 0;
+
   ExecutingEngine(
       std::unique_ptr<FilesStorage> files_storage,
       std::unique_ptr<rules_mappers::RulesMapper> rules_mapper,

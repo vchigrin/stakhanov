@@ -22,8 +22,10 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
 bool ComputeHashForFileSet(
     const FileSet& file_set,
     const BuildDirectoryState& build_dir_state,
-    HashValue* result) {
+    HashValue* result,
+    std::vector<FileInfo>* input_files) {
   HashAlgorithm content_ids_hasher;
+  input_files->clear();
   for (const auto& rel_path : file_set.sorted_rel_file_paths()) {
     std::string content_id = build_dir_state.GetFileContentId(rel_path);
     if (content_id.empty()) {
@@ -31,6 +33,7 @@ bool ComputeHashForFileSet(
           logger_, "No content id for " << rel_path.generic_string().c_str());
       return false;
     }
+    input_files->emplace_back(rel_path, content_id);
     HashString(&content_ids_hasher, content_id);
   }
   content_ids_hasher.Final(result->data());
@@ -62,11 +65,15 @@ void InMemoryRequestResults::AddRule(
 
 const CachedExecutionResponse*
 InMemoryRequestResults::FindCachedResults(
-    const BuildDirectoryState& build_dir_state) {
+    const BuildDirectoryState& build_dir_state,
+    std::vector<FileInfo>* input_files) {
   for (const auto& file_set_and_hashes : responses_) {
     HashValue input_content_hash;
     if (!ComputeHashForFileSet(
-        file_set_and_hashes.first, build_dir_state, &input_content_hash)) {
+        file_set_and_hashes.first,
+        build_dir_state,
+        &input_content_hash,
+        input_files)) {
       continue;  // May be not all files present in current build dir state.
     }
     const FileSetHashToResponse& file_set_hash_to_response =
@@ -75,6 +82,7 @@ InMemoryRequestResults::FindCachedResults(
     if (it != file_set_hash_to_response.end())
       return it->second.get();
   }
+  input_files->clear();
   return nullptr;
 }
 

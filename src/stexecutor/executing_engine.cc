@@ -29,7 +29,7 @@ ExecutingEngine::ExecutingEngine(
      : files_storage_(std::move(files_storage)),
        rules_mapper_(std::move(rules_mapper)),
        build_dir_state_(std::move(build_dir_state)),
-       next_command_id_(1) {
+       next_command_id_(kCacheHitCommandId + 1) {
 }
 
 ExecutingEngine::~ExecutingEngine() {
@@ -40,9 +40,10 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
     const ProcessCreationRequest& process_creation_request) {
   std::unique_lock<std::mutex> instance_lock(instance_lock_);
   const int command_id = next_command_id_++;
+  std::vector<rules_mappers::FileInfo> input_files;
   const rules_mappers::CachedExecutionResponse* execution_response =
       rules_mapper_->FindCachedResults(
-          process_creation_request, *build_dir_state_);
+          process_creation_request, *build_dir_state_, &input_files);
   if (!execution_response) {
     LOG4CPLUS_INFO(logger_,
          "No cached response for " << process_creation_request);
@@ -62,7 +63,11 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
         file_info.storage_content_id,
         file_info.rel_file_path);
   }
-  // TODO(vchigrin): Inform all parents about such cache hit.
+  UpdateAllParentResponses(
+      parent_command_id,
+      kCacheHitCommandId,
+      input_files,
+      *execution_response);
   return ProcessCreationResponse::BuildCacheHitResponse(
       command_id,
       execution_response->exit_code,

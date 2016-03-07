@@ -22,7 +22,8 @@ class InMemoryRulesMapper : public RulesMapper {
 
   const CachedExecutionResponse* FindCachedResults(
       const ProcessCreationRequest& process_creation_request,
-      const BuildDirectoryState& build_dir_state) override;
+      const BuildDirectoryState& build_dir_state,
+      std::vector<FileInfo>* input_files) override;
   void AddRule(
       const ProcessCreationRequest& process_creation_request,
       std::vector<FileInfo> input_files,

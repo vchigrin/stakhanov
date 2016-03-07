@@ -21,7 +21,8 @@ class RulesMapper {
   virtual ~RulesMapper() {}
   virtual const CachedExecutionResponse* FindCachedResults(
       const ProcessCreationRequest& process_creation_request,
-      const BuildDirectoryState& build_dir_state) = 0;
+      const BuildDirectoryState& build_dir_state,
+      std::vector<FileInfo>* input_files) = 0;
   virtual void AddRule(
       const ProcessCreationRequest& process_creation_request,
       std::vector<FileInfo> input_files,

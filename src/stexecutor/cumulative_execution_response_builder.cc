@@ -10,6 +10,7 @@
 
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
+#include "stexecutor/executing_engine.h"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 
 namespace {
@@ -40,10 +41,12 @@ void CumulativeExecutionResponseBuilder::AddChildResponse(
     int command_id,
     const std::vector<rules_mappers::FileInfo>& input_files,
     const rules_mappers::CachedExecutionResponse& execution_response) {
-  auto it = running_child_ids_.find(command_id);
-  LOG4CPLUS_ASSERT(logger_, it != running_child_ids_.end());
-  if (it != running_child_ids_.end())
-    running_child_ids_.erase(it);
+  if (command_id != ExecutingEngine::kCacheHitCommandId) {
+    auto it = running_child_ids_.find(command_id);
+    LOG4CPLUS_ASSERT(logger_, it != running_child_ids_.end());
+    if (it != running_child_ids_.end())
+      running_child_ids_.erase(it);
+  }
   AddFileSets(input_files, execution_response.output_files);
 }
 
@@ -51,10 +54,14 @@ std::vector<rules_mappers::FileInfo>
 CumulativeExecutionResponseBuilder::BuildAllInputFiles() {
   std::vector<rules_mappers::FileInfo> result;
   result.reserve(input_files_.size());
-  std::copy(
-      input_files_.begin(),
-      input_files_.end(),
-      std::back_inserter(result));
+  // Check, if any file is present both in input and output, then it
+  // can not be treated as "input" for cumulative command. This most probably
+  // indicates that one child command creates intermediate file, that other
+  // child command uses.
+  for (const rules_mappers::FileInfo& file_info : input_files_) {
+    if (output_files_.count(file_info) == 0)
+      result.push_back(file_info);
+  }
   return result;
 }
 

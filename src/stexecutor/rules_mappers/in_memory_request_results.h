@@ -25,7 +25,8 @@ class InMemoryRequestResults {
       std::vector<FileInfo> input_files,
       std::unique_ptr<CachedExecutionResponse> response);
   const CachedExecutionResponse* FindCachedResults(
-      const BuildDirectoryState& build_dir_state);
+      const BuildDirectoryState& build_dir_state,
+      std::vector<FileInfo>* input_files);
 
  private:
   using FileSetHashToResponse = std::unordered_map<
