@@ -27,6 +27,7 @@ inline std::string ToUTF8(const std::basic_string<char>& src) {
 
 std::wstring ToWideFromUTF8(const std::string& utf8_string);
 std::wstring ToWideFromANSI(const std::string& ansi_string);
+std::string ToANSIFromWide(const std::wstring& wide_string, int code_page);
 std::string UTF8ToLower(const std::string& src);
 std::string ASCIIToLower(const std::string& src);
 std::wstring WideToLower(const std::wstring& src);

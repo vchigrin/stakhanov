@@ -75,12 +75,23 @@ typedef BOOL (WINAPI *LPSET_STD_HANDLE)(
     HANDLE handle
 );
 
+typedef BOOL (WINAPI *LPWRITE_CONSOLE)(
+    HANDLE console_output,
+    const VOID *buffer,
+    DWORD number_of_chars_to_write,
+    LPDWORD number_of_chars_written,
+    LPVOID reserved
+);
+
+
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
 LPCREATE_PROCESS_W g_original_CreateProcessW;
 LPCREATE_PROCESS_A g_original_CreateProcessA;
 LPWRITE_FILE g_original_WriteFile;
 LPWRITE_FILE_EX g_original_WriteFileEx;
+LPWRITE_CONSOLE g_original_WriteConsoleA;
+LPWRITE_CONSOLE g_original_WriteConsoleW;
 LPSET_STD_HANDLE g_original_SetStdHandle;
 HANDLE g_stdout;
 HANDLE g_stderr;
@@ -551,6 +562,58 @@ BOOL WINAPI NewWriteFileEx(
       completion_routine);
 }
 
+BOOL WINAPI NewWriteConsoleA(
+    HANDLE console_output,
+    const VOID *buffer,
+    DWORD number_of_chars_to_write,
+    LPDWORD number_of_chars_written,
+    LPVOID reserved) {
+  if (console_output == g_stdout || console_output == g_stderr) {
+    std::string data(
+        static_cast<const char*>(buffer),
+        number_of_chars_to_write * sizeof(CHAR));
+    GetExecutor()->PushStdOutput(
+        console_output == g_stdout ?
+            StdHandles::StdOutput : StdHandles::StdError,
+        data);
+  }
+  return g_original_WriteConsoleA(
+      console_output,
+      buffer,
+      number_of_chars_to_write,
+      number_of_chars_written,
+      reserved);
+}
+
+BOOL WINAPI NewWriteConsoleW(
+    HANDLE console_output,
+    const VOID *buffer,
+    DWORD number_of_chars_to_write,
+    LPDWORD number_of_chars_written,
+    LPVOID reserved) {
+  if (console_output == g_stdout || console_output == g_stderr) {
+    // TODO(vchigrin): Is it OK to cache code-page dependent output data?
+    // May be we should convert to UTF-8 all output, both from
+    // WriteConsole and WriteFile?
+    DWORD code_page = GetConsoleOutputCP();
+    std::wstring wide_buffer(
+        static_cast<const wchar_t*>(buffer), number_of_chars_to_write);
+    std::string ansi_string = base::ToANSIFromWide(
+        wide_buffer,
+        code_page);
+    GetExecutor()->PushStdOutput(
+        console_output == g_stdout ?
+            StdHandles::StdOutput : StdHandles::StdError,
+        ansi_string);
+  }
+  return g_original_WriteConsoleW(
+      console_output,
+      buffer,
+      number_of_chars_to_write,
+      number_of_chars_written,
+      reserved);
+}
+
 BOOL WINAPI NewSetStdHandle(
     DWORD handle_id,
     HANDLE handle_val) {
@@ -585,6 +648,10 @@ bool InstallHooks(HMODULE current_module) {
   kernel_intercepts.insert(
       std::make_pair("WriteFileEx", &NewWriteFileEx));
   kernel_intercepts.insert(
+      std::make_pair("WriteConsoleA", &NewWriteConsoleA));
+  kernel_intercepts.insert(
+      std::make_pair("WriteConsoleW", &NewWriteConsoleW));
+  kernel_intercepts.insert(
       std::make_pair("SetStdHandle", &NewSetStdHandle));
   FunctionsInterceptor::Intercepts intercepts;
   intercepts.insert(
@@ -603,12 +670,18 @@ bool InstallHooks(HMODULE current_module) {
       GetProcAddress(kernel_module, "WriteFile"));
   g_original_WriteFileEx = reinterpret_cast<LPWRITE_FILE_EX>(
       GetProcAddress(kernel_module, "WriteFileEx"));
+  g_original_WriteConsoleA = reinterpret_cast<LPWRITE_CONSOLE>(
+      GetProcAddress(kernel_module, "WriteConsoleA"));
+  g_original_WriteConsoleW = reinterpret_cast<LPWRITE_CONSOLE>(
+      GetProcAddress(kernel_module, "WriteConsoleW"));
   g_original_SetStdHandle = reinterpret_cast<LPSET_STD_HANDLE>(
       GetProcAddress(kernel_module, "SetStdHandle"));
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
   LOG4CPLUS_ASSERT(logger_, g_original_WriteFile);
   LOG4CPLUS_ASSERT(logger_, g_original_WriteFileEx);
+  LOG4CPLUS_ASSERT(logger_, g_original_WriteConsoleA);
+  LOG4CPLUS_ASSERT(logger_, g_original_WriteConsoleW);
   LOG4CPLUS_ASSERT(logger_, g_original_SetStdHandle);
   g_stproxy_path = InitStProxyPath(current_module);
   return GetInterceptor()->Hook(intercepts, current_module);

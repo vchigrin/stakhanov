@@ -60,6 +60,41 @@ std::wstring ToWideFromANSI(const std::string& ansi_string) {
   return std::wstring(&buffer[0]);
 }
 
+std::string ToANSIFromWide(const std::wstring& wide_string, int code_page) {
+  if (wide_string.empty())
+    return std::string();
+  int required_size = WideCharToMultiByte(
+      code_page,
+      0,
+      wide_string.c_str(),
+      -1,
+      NULL,
+      0,
+      NULL,
+      NULL);
+  if (required_size == 0) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "WideCharToMultiByte failed, error " << error);
+    return std::string();
+  }
+  std::vector<char> buffer(required_size + 1);
+  int result = WideCharToMultiByte(
+      code_page,
+      0,
+      wide_string.c_str(),
+      -1,
+      &buffer[0],
+      static_cast<DWORD>(buffer.size()),
+      NULL,
+      NULL);
+  if (result == 0) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "WideCharToMultiByte failed, error " << error);
+    return std::string();
+  }
+  return std::string(&buffer[0]);
+}
+
 std::string ToUTF8FromANSI(const std::string& ansi_string) {
   return ToUTF8FromWide(ToWideFromANSI(ansi_string));
 }
