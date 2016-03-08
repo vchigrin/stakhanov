@@ -11,10 +11,10 @@ enum StdHandles {
 struct CacheHitInfo {
   1:bool cache_hit;
   2:i32 executor_command_id;
-  // Further fields are valid only for cache hits.
-  3:optional i32 exit_code;
-  4:optional string result_stdout;
-  5:optional string result_stderr;
+  // Further fields have non-default values only for cache hits.
+  3:i32 exit_code;
+  4:string result_stdout;
+  5:string result_stderr;
 }
 
 service Executor {
