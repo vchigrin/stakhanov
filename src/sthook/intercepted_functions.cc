@@ -160,6 +160,20 @@ NTSTATUS NTAPI NewNtCreateFile(
     ULONG create_options,
     PVOID ea_buffer,
     ULONG ea_length) {
+  NTSTATUS result = NtCreateFile(
+      file_handle,
+      desired_access,
+      object_attributes,
+      io_status_block,
+      allocation_size,
+      file_attributes,
+      share_access,
+      create_disposition,
+      create_options,
+      ea_buffer,
+      ea_length);
+  if (!NT_SUCCESS(result))
+     return result;
   if (object_attributes && object_attributes->ObjectName) {
     ExecutorIf* executor = GetExecutor();
     if (executor) {
@@ -196,18 +210,7 @@ NTSTATUS NTAPI NewNtCreateFile(
       }
     }
   }
-  return NtCreateFile(
-      file_handle,
-      desired_access,
-      object_attributes,
-      io_status_block,
-      allocation_size,
-      file_attributes,
-      share_access,
-      create_disposition,
-      create_options,
-      ea_buffer,
-      ea_length);
+  return result;
 }
 
 extern "C" __kernel_entry NTSTATUS NTAPI LdrLoadDll(
