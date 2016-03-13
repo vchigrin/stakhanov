@@ -4,7 +4,10 @@
 
 #include "stexecutor/file_hash.h"
 
+#include <windows.h>
 #include <vector>
+
+#include "base/scoped_handle.h"
 
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
@@ -19,23 +22,39 @@ const int kInputBufferSize = 1024 * 1024;
 bool HashFileContent(
     const boost::filesystem::path& file_path,
     CryptoPP::HashTransformation* hasher) {
-  boost::filesystem::filebuf input_filebuf;
-  if (!input_filebuf.open(file_path, std::ios::in)) {
+  base::ScopedHandle input_file(
+      CreateFileW(
+          file_path.native().c_str(),
+          GENERIC_READ,
+          FILE_SHARE_READ,
+          NULL,
+          OPEN_EXISTING,
+          FILE_ATTRIBUTE_NORMAL,
+          NULL));
+  if (!input_file.IsValid()) {
+    DWORD error = GetLastError();
     LOG4CPLUS_ERROR(
-        logger_, "Failed open file " << file_path.c_str());
+        logger_,
+        "Failed open file " << file_path.c_str() << " Error " << error);
     return false;
   }
+
   std::vector<uint8_t> buffer(kInputBufferSize);
   while (true) {
-    auto read = input_filebuf.sgetn(
-        reinterpret_cast<char*>(&buffer[0]), kInputBufferSize);
-    if (read < 0) {
-      LOG4CPLUS_ERROR(
-          logger_, "Unexpected sgetn result " << read);
+    DWORD bytes_read = 0;
+    BOOL ok = ReadFile(
+        input_file.Get(),
+        &buffer[0],
+        kInputBufferSize,
+        &bytes_read,
+        NULL);
+    if (!ok) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "ReadFile failed Error " << error);
       return false;
     }
-    hasher->Update(&buffer[0], static_cast<size_t>(read));
-    if (read < kInputBufferSize)
+    hasher->Update(&buffer[0], bytes_read);
+    if (bytes_read < kInputBufferSize)
       break;
   }
   return true;
