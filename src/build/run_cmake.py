@@ -12,7 +12,7 @@ CMAKE_EXECUTABLE = os.path.join(CMAKE_DIR, 'bin', 'cmake.exe')
 OUT_DIR = os.path.join(SRC_DIR, 'out')
 
 
-def generate_build_bat(dest_dir, msvs_bat_file_command):
+def generate_build_bat(dest_dir, msvs_bat_file_command, copy_command):
     lines = []
     # Save current dir and cd to build dir
     lines.append('pushd %~dp0')
@@ -25,6 +25,8 @@ def generate_build_bat(dest_dir, msvs_bat_file_command):
     lines.append('ninja %*')
     # Restore environment
     lines.append('endlocal')
+    if copy_command:
+        lines.append(copy_command)
     # Restore directory
     lines.append('popd')
     dest_path = os.path.join(dest_dir, 'build.bat')
@@ -32,11 +34,20 @@ def generate_build_bat(dest_dir, msvs_bat_file_command):
         f.write('\n'.join(lines))
 
 
-def gen_for_build_type(build_type, folder_suffix, msvs_bat_file_command):
-    dest_dir = os.path.join(OUT_DIR, build_type + folder_suffix)
+def get_dir_name(build_type, platform_type):
+    return build_type + '_' + platform_type
+
+
+def gen_for_build_type(build_type, platform_type, msvs_bat_file_command):
+    dest_dir = os.path.join(OUT_DIR, get_dir_name(build_type, platform_type))
     if not os.path.exists(dest_dir):
         os.makedirs(dest_dir)
-    generate_build_bat(dest_dir, msvs_bat_file_command)
+    if platform_type == 'x86':
+        copy_command = 'copy bin\\*32* ..\\{}\\bin\\'.format(
+            get_dir_name(build_type, 'amd64'))
+    else:
+        copy_command = None
+    generate_build_bat(dest_dir, msvs_bat_file_command, copy_command)
     os.chdir(dest_dir)
     args = [
         CMAKE_EXECUTABLE,
@@ -63,8 +74,8 @@ def gen_for_platform(vs_dir, platform_type):
     bat_path = os.path.join(vs_dir, 'VC', 'vcvarsall.bat')
     msvs_bat_file_command = [bat_path, platform_type]
     grab_environ(msvs_bat_file_command)
-    gen_for_build_type('Debug', '_' + platform_type, msvs_bat_file_command)
-    gen_for_build_type('Release', '_' + platform_type, msvs_bat_file_command)
+    gen_for_build_type('Debug', platform_type, msvs_bat_file_command)
+    gen_for_build_type('Release', platform_type, msvs_bat_file_command)
 
 
 def main():
