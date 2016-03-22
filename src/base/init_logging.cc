@@ -8,6 +8,7 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "log4cplus/layout.h"
+#include "log4cplus/log4judpappender.h"
 #include "log4cplus/win32debugappender.h"
 
 namespace base {
@@ -20,6 +21,12 @@ void InitLogging() {
       std::auto_ptr<log4cplus::Layout>(new log4cplus::TTCCLayout()));
   log4cplus::Logger::getRoot().addAppender(
       log4cplus::SharedAppenderPtr(append_1.get()));
+
+  log4cplus::helpers::SharedObjectPtr<log4cplus::Log4jUdpAppender>
+      append_2(new log4cplus::Log4jUdpAppender(L"127.0.0.1", 7071));
+  log4cplus::Logger::getRoot().addAppender(
+      log4cplus::SharedAppenderPtr(append_2.get()));
+
   log4cplus::Logger::getRoot().setLogLevel(log4cplus::TRACE_LOG_LEVEL);
 }
 
