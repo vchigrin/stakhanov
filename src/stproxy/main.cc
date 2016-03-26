@@ -35,7 +35,7 @@ int ProcessRequest(const void* file_mapping_data) {
       header->stderr_byte_size,
       &bytes_written,
       NULL);
-  if (bytes_written != header->stdout_byte_size) {
+  if (bytes_written != header->stderr_byte_size) {
     DWORD error_code = GetLastError();
     std::cerr << "WriteFile failed, error code "  << error_code << std::endl;
   }
