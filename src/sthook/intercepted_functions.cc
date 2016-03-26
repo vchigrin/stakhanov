@@ -21,6 +21,7 @@
 #include "log4cplus/loggingmacros.h"
 #include "sthook/functions_interceptor.h"
 #include "sthook/sthook_communication.h"
+#include "sthook/std_handles_holder.h"
 #include "stproxy/stproxy_communication.h"
 #include "thrift/protocol/TBinaryProtocol.h"
 #include "thrift/transport/TBufferTransports.h"
@@ -83,6 +84,18 @@ typedef BOOL (WINAPI *LPWRITE_CONSOLE)(
     LPVOID reserved
 );
 
+typedef BOOL (WINAPI *LPDUPLICATE_HANDLE)(
+    HANDLE source_process_handle,
+    HANDLE source_handle,
+    HANDLE target_process_handle,
+    LPHANDLE target_handle,
+    DWORD desired_access,
+    BOOL inherit_handle,
+    DWORD options
+);
+
+typedef BOOL (WINAPI *LPCLOSE_HANDLE)(HANDLE handle);
+
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
@@ -93,8 +106,8 @@ LPWRITE_FILE_EX g_original_WriteFileEx;
 LPWRITE_CONSOLE g_original_WriteConsoleA;
 LPWRITE_CONSOLE g_original_WriteConsoleW;
 LPSET_STD_HANDLE g_original_SetStdHandle;
-HANDLE g_stdout;
-HANDLE g_stderr;
+LPDUPLICATE_HANDLE g_original_DuplicateHandle;
+LPCLOSE_HANDLE g_original_CloseHandle;
 std::wstring g_stproxy_path;
 
 std::wstring InitStProxyPath(HMODULE current_module) {
@@ -527,13 +540,13 @@ BOOL WINAPI NewWriteFile(
     DWORD number_of_bytes_to_write,
     LPDWORD number_of_bytes_written,
     LPOVERLAPPED overlapped) {
-  if (file == g_stdout || file == g_stderr) {
+  StdHandles::type handle_type = StdHandles::StdOutput;
+  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+  if (instance && instance->IsStdHandle(file, &handle_type)) {
     std::string data(
         static_cast<const char*>(buffer),
         number_of_bytes_to_write);
-    GetExecutor()->PushStdOutput(
-        file == g_stdout ? StdHandles::StdOutput : StdHandles::StdError,
-        data);
+    GetExecutor()->PushStdOutput(handle_type, data);
   }
   return g_original_WriteFile(
       file,
@@ -549,13 +562,13 @@ BOOL WINAPI NewWriteFileEx(
     DWORD number_of_bytes_to_write,
     LPOVERLAPPED overlapped,
     LPOVERLAPPED_COMPLETION_ROUTINE completion_routine) {
-  if (file == g_stdout || file == g_stderr) {
+  StdHandles::type handle_type = StdHandles::StdOutput;
+  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+  if (instance && instance->IsStdHandle(file, &handle_type)) {
     std::string data(
         static_cast<const char*>(buffer),
         number_of_bytes_to_write);
-    GetExecutor()->PushStdOutput(
-        file == g_stdout ? StdHandles::StdOutput : StdHandles::StdError,
-        data);
+    GetExecutor()->PushStdOutput(handle_type, data);
   }
   return g_original_WriteFileEx(
       file,
@@ -571,14 +584,13 @@ BOOL WINAPI NewWriteConsoleA(
     DWORD number_of_chars_to_write,
     LPDWORD number_of_chars_written,
     LPVOID reserved) {
-  if (console_output == g_stdout || console_output == g_stderr) {
+  StdHandles::type handle_type = StdHandles::StdOutput;
+  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+  if (instance && instance->IsStdHandle(console_output, &handle_type)) {
     std::string data(
         static_cast<const char*>(buffer),
         number_of_chars_to_write * sizeof(CHAR));
-    GetExecutor()->PushStdOutput(
-        console_output == g_stdout ?
-            StdHandles::StdOutput : StdHandles::StdError,
-        data);
+    GetExecutor()->PushStdOutput(handle_type, data);
   }
   return g_original_WriteConsoleA(
       console_output,
@@ -594,7 +606,9 @@ BOOL WINAPI NewWriteConsoleW(
     DWORD number_of_chars_to_write,
     LPDWORD number_of_chars_written,
     LPVOID reserved) {
-  if (console_output == g_stdout || console_output == g_stderr) {
+  StdHandles::type handle_type = StdHandles::StdOutput;
+  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+  if (instance && instance->IsStdHandle(console_output, &handle_type)) {
     // TODO(vchigrin): Is it OK to cache code-page dependent output data?
     // May be we should convert to UTF-8 all output, both from
     // WriteConsole and WriteFile?
@@ -604,10 +618,7 @@ BOOL WINAPI NewWriteConsoleW(
     std::string ansi_string = base::ToANSIFromWide(
         wide_buffer,
         code_page);
-    GetExecutor()->PushStdOutput(
-        console_output == g_stdout ?
-            StdHandles::StdOutput : StdHandles::StdError,
-        ansi_string);
+    GetExecutor()->PushStdOutput(handle_type, ansi_string);
   }
   return g_original_WriteConsoleW(
       console_output,
@@ -621,11 +632,53 @@ BOOL WINAPI NewSetStdHandle(
     DWORD handle_id,
     HANDLE handle_val) {
   BOOL result = g_original_SetStdHandle(handle_id, handle_val);
+  if (result &&
+     (handle_id == STD_OUTPUT_HANDLE || handle_id == STD_ERROR_HANDLE)) {
+    StdHandles::type handle_type = (handle_id == STD_OUTPUT_HANDLE ?
+        StdHandles::StdOutput : StdHandles::StdError);
+    StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+    if (instance)
+      instance->SetStdHandle(handle_type, handle_val);
+  }
+  return result;
+}
+
+BOOL WINAPI NewDuplicateHandle(
+    HANDLE source_process_handle,
+    HANDLE source_handle,
+    HANDLE target_process_handle,
+    LPHANDLE target_handle,
+    DWORD desired_access,
+    BOOL inherit_handle,
+    DWORD options) {
+  const BOOL result = g_original_DuplicateHandle(
+      source_process_handle,
+      source_handle,
+      target_process_handle,
+      target_handle,
+      desired_access,
+      inherit_handle,
+      options);
+  if (!result)
+    return result;
+  const HANDLE current_process = GetCurrentProcess();
+  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+  if (source_process_handle == current_process &&
+     target_process_handle == current_process &&
+     instance) {
+    instance->MarkDuplicatedHandle(source_handle, *target_handle);
+    if (options & DUPLICATE_CLOSE_SOURCE)
+      instance->MarkHandleClosed(source_handle);
+  }
+  return result;
+}
+
+BOOL WINAPI NewCloseHandle(HANDLE handle) {
+  const BOOL result = g_original_CloseHandle(handle);
   if (result) {
-    if (handle_id == STD_OUTPUT_HANDLE)
-      g_stdout = handle_val;
-    if (handle_id == STD_ERROR_HANDLE)
-      g_stderr = handle_val;
+    StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+    if (instance)
+      instance->MarkHandleClosed(handle);
   }
   return result;
 }
@@ -656,6 +709,10 @@ bool InstallHooks(HMODULE current_module) {
       std::make_pair("WriteConsoleW", &NewWriteConsoleW));
   kernel_intercepts.insert(
       std::make_pair("SetStdHandle", &NewSetStdHandle));
+  kernel_intercepts.insert(
+      std::make_pair("DuplicateHandle", &NewDuplicateHandle));
+  kernel_intercepts.insert(
+      std::make_pair("CloseHandle", &NewCloseHandle));
   FunctionsInterceptor::Intercepts intercepts;
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
@@ -679,6 +736,10 @@ bool InstallHooks(HMODULE current_module) {
       GetProcAddress(kernel_module, "WriteConsoleW"));
   g_original_SetStdHandle = reinterpret_cast<LPSET_STD_HANDLE>(
       GetProcAddress(kernel_module, "SetStdHandle"));
+  g_original_DuplicateHandle = reinterpret_cast<LPDUPLICATE_HANDLE>(
+      GetProcAddress(kernel_module, "DuplicateHandle"));
+  g_original_CloseHandle = reinterpret_cast<LPCLOSE_HANDLE>(
+      GetProcAddress(kernel_module, "CloseHandle"));
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
   LOG4CPLUS_ASSERT(logger_, g_original_WriteFile);
@@ -686,16 +747,15 @@ bool InstallHooks(HMODULE current_module) {
   LOG4CPLUS_ASSERT(logger_, g_original_WriteConsoleA);
   LOG4CPLUS_ASSERT(logger_, g_original_WriteConsoleW);
   LOG4CPLUS_ASSERT(logger_, g_original_SetStdHandle);
+  LOG4CPLUS_ASSERT(logger_, g_original_DuplicateHandle);
+  LOG4CPLUS_ASSERT(logger_, g_original_CloseHandle);
   g_stproxy_path = InitStProxyPath(current_module);
   return GetInterceptor()->Hook(intercepts, current_module);
 }
 
 void Initialize() {
   GetExecutor()->Initialize(GetCurrentProcessId());
-  g_stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-  g_stderr = GetStdHandle(STD_ERROR_HANDLE);
-  LOG4CPLUS_ASSERT(logger_, g_stdout);
-  LOG4CPLUS_ASSERT(logger_, g_stderr);
+  StdHandlesHolder::Initialize();
 }
 
 }  // namespace sthook

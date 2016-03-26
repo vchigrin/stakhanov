@@ -8,6 +8,8 @@ add_library(sthook SHARED
   functions_interceptor.h
   intercepted_functions.cc
   intercepted_functions.h
+  std_handles_holder.cc
+  std_handles_holder.h
 )
 
 if(CMAKE_CL_64)
