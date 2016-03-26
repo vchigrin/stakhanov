@@ -31,8 +31,13 @@ struct FileInfo;
 // logic about executing child commands.
 class ExecutingEngine {
  public:
-  static const int kInvalidCommandId = -1;
-  static const int kCacheHitCommandId = 0;
+  enum SpecialCommandIds {
+    kInvalidCommandId =-1,
+    kCacheHitCommandId,
+    kRootCommandId,
+    // Must be the last member of enum.
+    kFirstUserCommandId
+  };
 
   ExecutingEngine(
       std::unique_ptr<FilesStorage> files_storage,

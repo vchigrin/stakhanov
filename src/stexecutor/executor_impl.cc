@@ -55,7 +55,8 @@ bool ExecutorImpl::HookedCreateFile(
   return true;
 }
 
-void ExecutorImpl::Initialize(const int32_t current_pid) {
+void ExecutorImpl::Initialize(
+    const int32_t current_pid, const bool is_root_process) {
   process_handle_ = base::ScopedHandle(
       OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE,
       FALSE, current_pid));
@@ -63,8 +64,12 @@ void ExecutorImpl::Initialize(const int32_t current_pid) {
     DWORD error_code = GetLastError();
     LOG4CPLUS_ERROR(logger_, "OpenProcess failed. Error " << error_code);
   }
-  command_info_.command_id = executing_engine_->TakeCommandIDForPID(
-      current_pid);
+  if (is_root_process) {
+    command_info_.command_id = ExecutingEngine::kRootCommandId;
+  } else {
+    command_info_.command_id = executing_engine_->TakeCommandIDForPID(
+        current_pid);
+  }
 }
 
 void ExecutorImpl::OnSuspendedProcessCreated(
@@ -109,6 +114,11 @@ void ExecutorImpl::PushStdOutput(
 }
 
 void ExecutorImpl::FillExitCode() {
+  // Root process - stlaunch.exe is a special, we don't save results for it
+  // (actually it is meaningless - only results of child processes
+  // (on many levels) of stlaunch can be retrieved from cache).
+  if (command_info_.command_id == ExecutingEngine::kRootCommandId)
+    return;
   DWORD exit_code = 0;
   LOG4CPLUS_ASSERT(logger_, process_handle_.IsValid());
   while (true) {

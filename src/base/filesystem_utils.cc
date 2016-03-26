@@ -8,7 +8,7 @@
 
 namespace base {
 
-boost::filesystem::path GetCurrentExecutableDir() {
+boost::filesystem::path GetCurrentExecutablePath() {
   // Must be enough.
   wchar_t buffer[MAX_PATH + 1];
   DWORD result = GetModuleFileName(NULL, buffer, MAX_PATH + 1);
@@ -16,7 +16,11 @@ boost::filesystem::path GetCurrentExecutableDir() {
     return boost::filesystem::path();
   }
   boost::filesystem::path exe_path(buffer);
-  return exe_path.parent_path();
+  return exe_path;
+}
+
+boost::filesystem::path GetCurrentExecutableDir() {
+  return GetCurrentExecutablePath().parent_path();
 }
 
 bool IsAncestorOfFile(

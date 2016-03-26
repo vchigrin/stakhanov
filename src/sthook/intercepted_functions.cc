@@ -30,6 +30,7 @@
 namespace {
 
 const wchar_t kStProxyExeName[] = L"stproxy.exe";
+const wchar_t kStLaunchExeName[] = L"stlaunch.exe";
 
 typedef BOOL (WINAPI *LPCREATE_PROCESS_W)(
     LPCWSTR application_name,
@@ -754,7 +755,9 @@ bool InstallHooks(HMODULE current_module) {
 }
 
 void Initialize() {
-  GetExecutor()->Initialize(GetCurrentProcessId());
+  boost::filesystem::path current_exe = base::GetCurrentExecutablePath();
+  const bool is_st_launch = (current_exe.filename() == kStLaunchExeName);
+  GetExecutor()->Initialize(GetCurrentProcessId(), is_st_launch);
   StdHandlesHolder::Initialize();
 }
 

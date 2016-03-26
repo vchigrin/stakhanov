@@ -29,7 +29,7 @@ ExecutingEngine::ExecutingEngine(
      : files_storage_(std::move(files_storage)),
        rules_mapper_(std::move(rules_mapper)),
        build_dir_state_(std::move(build_dir_state)),
-       next_command_id_(kCacheHitCommandId + 1) {
+       next_command_id_(kFirstUserCommandId) {
 }
 
 ExecutingEngine::~ExecutingEngine() {
@@ -78,6 +78,7 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
 void ExecutingEngine::SaveCommandResults(
     const ExecutedCommandInfo& command_info) {
   std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  LOG4CPLUS_ASSERT(logger_, command_info.command_id >= kFirstUserCommandId);
   auto it = running_commands_.find(command_info.command_id);
   if (it == running_commands_.end()) {
     LOG4CPLUS_ERROR(
@@ -209,7 +210,7 @@ int ExecutingEngine::TakeCommandIDForPID(int32_t pid) {
   auto it = pid_to_command_id_.find(pid);
   if (it == pid_to_command_id_.end()) {
     LOG4CPLUS_ERROR(logger_, "No command id for pid " << pid);
-    return 0;
+    return kInvalidCommandId;
   }
   int result = it->second;
   pid_to_command_id_.erase(it);

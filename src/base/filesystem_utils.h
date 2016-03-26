@@ -15,6 +15,7 @@
 namespace base {
 
 boost::filesystem::path GetCurrentExecutableDir();
+boost::filesystem::path GetCurrentExecutablePath();
 
 template <typename CHAR_TYPE>
 std::string AbsPathUTF8(const std::basic_string<CHAR_TYPE>& path) {

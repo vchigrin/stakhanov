@@ -21,7 +21,8 @@ class ExecutorImpl : public ExecutorIf {
   ExecutorImpl(
       DllInjector* dll_injector,
       ExecutingEngine* executing_engine);
-  void Initialize(const int32_t current_pid) override;
+  void Initialize(
+      const int32_t current_pid, const bool is_root_process) override;
   bool HookedCreateFile(
       const std::string& abs_path, const bool for_writing) override;
   void PushStdOutput(
