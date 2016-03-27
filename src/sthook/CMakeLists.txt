@@ -6,6 +6,8 @@ add_library(sthook SHARED
   dllmain.cc
   functions_interceptor.cc
   functions_interceptor.h
+  intercept_helper.cc
+  intercept_helper.h
   intercepted_functions.cc
   intercepted_functions.h
   std_handles_holder.cc

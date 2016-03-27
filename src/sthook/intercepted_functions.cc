@@ -20,6 +20,7 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "sthook/functions_interceptor.h"
+#include "sthook/intercept_helper.h"
 #include "sthook/sthook_communication.h"
 #include "sthook/std_handles_holder.h"
 #include "stproxy/stproxy_communication.h"
@@ -95,7 +96,9 @@ typedef BOOL (WINAPI *LPDUPLICATE_HANDLE)(
     DWORD options
 );
 
-typedef BOOL (WINAPI *LPCLOSE_HANDLE)(HANDLE handle);
+
+#define FOR_EACH_INTERCEPTS(DO_IT) \
+    DO_IT(CloseHandle, nullptr, &AfterCloseHandle, BOOL, HANDLE)
 
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
@@ -108,7 +111,6 @@ LPWRITE_CONSOLE g_original_WriteConsoleA;
 LPWRITE_CONSOLE g_original_WriteConsoleW;
 LPSET_STD_HANDLE g_original_SetStdHandle;
 LPDUPLICATE_HANDLE g_original_DuplicateHandle;
-LPCLOSE_HANDLE g_original_CloseHandle;
 std::wstring g_stproxy_path;
 
 std::wstring InitStProxyPath(HMODULE current_module) {
@@ -674,19 +676,32 @@ BOOL WINAPI NewDuplicateHandle(
   return result;
 }
 
-BOOL WINAPI NewCloseHandle(HANDLE handle) {
-  const BOOL result = g_original_CloseHandle(handle);
+void AfterCloseHandle(BOOL result, HANDLE handle) {
   if (result) {
     StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
     if (instance)
       instance->MarkHandleClosed(handle);
   }
-  return result;
 }
 
 }  // namespace
 
 namespace sthook {
+
+#define DEFINE_INTERCEPT(function_name, before_call, after_call, result, ...) \
+extern InterceptHelperData function_name##_InterceptData = { \
+    #function_name, before_call, after_call };
+
+  FOR_EACH_INTERCEPTS(DEFINE_INTERCEPT)
+#undef DEFINE_INTERCEPT
+
+REGISTRATION_PTR g_intercepts_table[] = {
+#define DEFINE_REGISER(function_name, before_call, after_call, result, ...) \
+  InterceptHelper< \
+      &function_name##_InterceptData, result, __VA_ARGS__>::Register,
+  FOR_EACH_INTERCEPTS(DEFINE_REGISER)
+#undef DEFINE_INTERCEPT
+};
 
 bool InstallHooks(HMODULE current_module) {
   FunctionsInterceptor::DllInterceptedFunctions ntdll_intercepts;
@@ -712,13 +727,16 @@ bool InstallHooks(HMODULE current_module) {
       std::make_pair("SetStdHandle", &NewSetStdHandle));
   kernel_intercepts.insert(
       std::make_pair("DuplicateHandle", &NewDuplicateHandle));
-  kernel_intercepts.insert(
-      std::make_pair("CloseHandle", &NewCloseHandle));
   FunctionsInterceptor::Intercepts intercepts;
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
           "ntdll.dll", ntdll_intercepts));
   HMODULE kernel_module = GetModuleHandleA("kernel32.dll");
+  for (size_t i = 0;
+      i < sizeof(g_intercepts_table) / sizeof(g_intercepts_table[0]); ++i) {
+    g_intercepts_table[i](kernel_module, &kernel_intercepts);
+  }
+
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
           "kernel32.dll", kernel_intercepts));
@@ -739,8 +757,6 @@ bool InstallHooks(HMODULE current_module) {
       GetProcAddress(kernel_module, "SetStdHandle"));
   g_original_DuplicateHandle = reinterpret_cast<LPDUPLICATE_HANDLE>(
       GetProcAddress(kernel_module, "DuplicateHandle"));
-  g_original_CloseHandle = reinterpret_cast<LPCLOSE_HANDLE>(
-      GetProcAddress(kernel_module, "CloseHandle"));
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
   LOG4CPLUS_ASSERT(logger_, g_original_WriteFile);
@@ -749,7 +765,6 @@ bool InstallHooks(HMODULE current_module) {
   LOG4CPLUS_ASSERT(logger_, g_original_WriteConsoleW);
   LOG4CPLUS_ASSERT(logger_, g_original_SetStdHandle);
   LOG4CPLUS_ASSERT(logger_, g_original_DuplicateHandle);
-  LOG4CPLUS_ASSERT(logger_, g_original_CloseHandle);
   g_stproxy_path = InitStProxyPath(current_module);
   return GetInterceptor()->Hook(intercepts, current_module);
 }
