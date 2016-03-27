@@ -76,7 +76,9 @@ typedef BOOL (WINAPI *LPCREATE_PROCESS_A)(
     DO_IT(SetStdHandle, nullptr, &AfterSetStdHandle, BOOL, \
           DWORD, HANDLE) \
     DO_IT(DuplicateHandle, nullptr, &AfterDuplicateHandle, BOOL, \
-          HANDLE, HANDLE, HANDLE, LPHANDLE, DWORD, BOOL, DWORD)
+          HANDLE, HANDLE, HANDLE, LPHANDLE, DWORD, BOOL, DWORD) \
+    DO_IT(DeleteFileA, nullptr, &AfterDeleteFileA, BOOL, LPCSTR) \
+    DO_IT(DeleteFileW, nullptr, &AfterDeleteFileW, BOOL, LPCWSTR)
 
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
@@ -647,6 +649,28 @@ void BeforeExitProcess(UINT exit_code) {
   // CloseHandle() calls when some modules already unloaded.
   // May cause strange crashes of python interpreter.
   sthook::InterceptHelperBase::DisableAll();
+}
+
+void AfterDeleteFileA(BOOL result, LPCSTR file_path) {
+  if (!result)
+    return;
+  std::string abs_path_utf8 = base::AbsPathUTF8(
+      base::ToLongPathName(std::string(file_path)));
+  {
+    std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+    GetExecutor()->OnFileDeleted(abs_path_utf8);
+  }
+}
+
+void AfterDeleteFileW(BOOL result, LPCWSTR file_path) {
+  if (!result)
+    return;
+  std::string abs_path_utf8 = base::AbsPathUTF8(
+      base::ToLongPathName(std::wstring(file_path)));
+  {
+    std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+    GetExecutor()->OnFileDeleted(abs_path_utf8);
+  }
 }
 
 }  // namespace

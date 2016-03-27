@@ -28,4 +28,5 @@ service Executor {
       4:list<string> environment_strings);
 
   void OnSuspendedProcessCreated(1:i32 child_pid, 2:i32 executor_commmand_id);
+  void OnFileDeleted(1:string abs_path);
 }

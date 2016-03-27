@@ -36,6 +36,7 @@ class ExecutorImpl : public ExecutorIf {
   void OnSuspendedProcessCreated(
       const int32_t child_pid,
       const int32_t executor_command_id) override;
+  void OnFileDeleted(const std::string& abs_path) override;
   void FillExitCode();
   const ExecutedCommandInfo& command_info() const {
     return command_info_;

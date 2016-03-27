@@ -85,6 +85,12 @@ void ExecutorImpl::OnSuspendedProcessCreated(
   command_info_.child_command_ids.push_back(child_pid);
 }
 
+void ExecutorImpl::OnFileDeleted(const std::string& abs_path) {
+  boost::filesystem::path norm_path = NormalizePath(abs_path);
+  // Need to avoid attempts to hash temp. files.
+  command_info_.output_files.erase(norm_path);
+}
+
 void ExecutorImpl::OnBeforeProcessCreate(
     CacheHitInfo& result,
     const std::string& exe_path,
