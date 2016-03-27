@@ -98,7 +98,8 @@ typedef BOOL (WINAPI *LPDUPLICATE_HANDLE)(
 
 
 #define FOR_EACH_INTERCEPTS(DO_IT) \
-    DO_IT(CloseHandle, nullptr, &AfterCloseHandle, BOOL, HANDLE)
+    DO_IT(CloseHandle, nullptr, &AfterCloseHandle, BOOL, HANDLE) \
+    DO_IT(ExitProcess, &BeforeExitProcess, nullptr, VOID, UINT)
 
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
@@ -682,6 +683,13 @@ void AfterCloseHandle(BOOL result, HANDLE handle) {
     if (instance)
       instance->MarkHandleClosed(handle);
   }
+}
+
+void BeforeExitProcess(UINT exit_code) {
+  // Must disable all hooks, since during ExitProcess there may be
+  // CloseHandle() calls when some modules already unloaded.
+  // May cause strange crashes of python interpreter.
+  sthook::InterceptHelperBase::DisableAll();
 }
 
 }  // namespace
