@@ -108,7 +108,7 @@ void ExecutingEngine::SaveCommandResults(
     boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
         input_path);
     if (rel_path.empty()) {
-      LOG4CPLUS_INFO(logger_, "Input file is not storage file " << input_path);
+      LOG4CPLUS_DEBUG(logger_, "Input file is not storage file " << input_path);
       continue;
     }
     std::string content_id = build_dir_state_->GetFileContentId(rel_path);
