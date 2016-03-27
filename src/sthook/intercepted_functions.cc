@@ -8,6 +8,7 @@
 
 #include <codecvt>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -32,6 +33,8 @@ namespace {
 
 const wchar_t kStProxyExeName[] = L"stproxy.exe";
 const wchar_t kStLaunchExeName[] = L"stlaunch.exe";
+
+std::mutex g_executor_call_mutex;
 
 typedef BOOL (WINAPI *LPCREATE_PROCESS_W)(
     LPCWSTR application_name,
@@ -221,9 +224,12 @@ NTSTATUS NTAPI NewNtCreateFile(
           (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
         // Don't care about directories.
         std::string abs_path_utf8 = base::ToUTF8FromWide(name_str);
-        executor->HookedCreateFile(
-            abs_path_utf8,
-            (desired_access & GENERIC_WRITE) != 0);
+        {
+          std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+          executor->HookedCreateFile(
+              abs_path_utf8,
+              (desired_access & GENERIC_WRITE) != 0);
+        }
       }
     }
   }
@@ -445,12 +451,15 @@ BOOL CreateProcessImpl(
   // results of this invokation, create some dummy process driver
   // instead of actual process creation.
   CacheHitInfo cache_hit_info;
-  GetExecutor()->OnBeforeProcessCreate(
-      cache_hit_info,
-      exe_path,
-      arguments_utf8,
-      startup_dir_utf8,
-      GetEnvironmentStringsAsUTF8());
+  {
+    std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+    GetExecutor()->OnBeforeProcessCreate(
+        cache_hit_info,
+        exe_path,
+        arguments_utf8,
+        startup_dir_utf8,
+        GetEnvironmentStringsAsUTF8());
+  }
   BOOL result = FALSE;
   if (cache_hit_info.cache_hit) {
     result = CreateProxyProcess(
@@ -478,6 +487,7 @@ BOOL CreateProcessImpl(
   if (!cache_hit_info.cache_hit) {
     // Cache hits should not go through all pipeline with
     // injecting interceptor DLLs, tracking files, etc.
+    std::lock_guard<std::mutex> lock(g_executor_call_mutex);
     GetExecutor()->OnSuspendedProcessCreated(
         process_information->dwProcessId,
         cache_hit_info.executor_command_id);
@@ -550,7 +560,10 @@ BOOL WINAPI NewWriteFile(
     std::string data(
         static_cast<const char*>(buffer),
         number_of_bytes_to_write);
-    GetExecutor()->PushStdOutput(handle_type, data);
+    {
+      std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+      GetExecutor()->PushStdOutput(handle_type, data);
+    }
   }
   return g_original_WriteFile(
       file,
@@ -572,7 +585,10 @@ BOOL WINAPI NewWriteFileEx(
     std::string data(
         static_cast<const char*>(buffer),
         number_of_bytes_to_write);
-    GetExecutor()->PushStdOutput(handle_type, data);
+    {
+      std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+      GetExecutor()->PushStdOutput(handle_type, data);
+    }
   }
   return g_original_WriteFileEx(
       file,
@@ -594,7 +610,10 @@ BOOL WINAPI NewWriteConsoleA(
     std::string data(
         static_cast<const char*>(buffer),
         number_of_chars_to_write * sizeof(CHAR));
-    GetExecutor()->PushStdOutput(handle_type, data);
+    {
+      std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+      GetExecutor()->PushStdOutput(handle_type, data);
+    }
   }
   return g_original_WriteConsoleA(
       console_output,
@@ -622,7 +641,10 @@ BOOL WINAPI NewWriteConsoleW(
     std::string ansi_string = base::ToANSIFromWide(
         wide_buffer,
         code_page);
-    GetExecutor()->PushStdOutput(handle_type, ansi_string);
+    {
+      std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+      GetExecutor()->PushStdOutput(handle_type, ansi_string);
+    }
   }
   return g_original_WriteConsoleW(
       console_output,
