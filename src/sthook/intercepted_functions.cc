@@ -60,61 +60,29 @@ typedef BOOL (WINAPI *LPCREATE_PROCESS_A)(
     LPSTARTUPINFOA startup_info,
     LPPROCESS_INFORMATION process_information);
 
-typedef BOOL (WINAPI *LPWRITE_FILE)(
-    HANDLE file,
-    LPCVOID buffer,
-    DWORD number_of_bytes_to_write,
-    LPDWORD number_of_bytes_written,
-    LPOVERLAPPED overlapped
-);
-
-typedef BOOL (WINAPI *LPWRITE_FILE_EX)(
-    HANDLE file,
-    LPCVOID buffer,
-    DWORD number_of_bytes_to_write,
-    LPOVERLAPPED overlapped,
-    LPOVERLAPPED_COMPLETION_ROUTINE completion_routine
-);
-
-typedef BOOL (WINAPI *LPSET_STD_HANDLE)(
-    DWORD handle_id,
-    HANDLE handle
-);
-
-typedef BOOL (WINAPI *LPWRITE_CONSOLE)(
-    HANDLE console_output,
-    const VOID *buffer,
-    DWORD number_of_chars_to_write,
-    LPDWORD number_of_chars_written,
-    LPVOID reserved
-);
-
-typedef BOOL (WINAPI *LPDUPLICATE_HANDLE)(
-    HANDLE source_process_handle,
-    HANDLE source_handle,
-    HANDLE target_process_handle,
-    LPHANDLE target_handle,
-    DWORD desired_access,
-    BOOL inherit_handle,
-    DWORD options
-);
-
 
 #define FOR_EACH_INTERCEPTS(DO_IT) \
     DO_IT(CloseHandle, nullptr, &AfterCloseHandle, BOOL, HANDLE) \
-    DO_IT(ExitProcess, &BeforeExitProcess, nullptr, VOID, UINT)
+    DO_IT(ExitProcess, &BeforeExitProcess, nullptr, VOID, UINT) \
+    DO_IT(WriteFile, &BeforeWriteFile, nullptr, BOOL, \
+          HANDLE, LPCVOID, DWORD, LPDWORD, LPOVERLAPPED) \
+    DO_IT(WriteFileEx, &BeforeWriteFileEx, nullptr, BOOL, \
+          HANDLE, LPCVOID, DWORD, LPOVERLAPPED, \
+          LPOVERLAPPED_COMPLETION_ROUTINE) \
+    DO_IT(WriteConsoleA, &BeforeWriteConsoleA, nullptr, BOOL, \
+          HANDLE, const VOID*, DWORD, LPDWORD, LPVOID) \
+    DO_IT(WriteConsoleW, &BeforeWriteConsoleW, nullptr, BOOL, \
+          HANDLE, const VOID*, DWORD, LPDWORD, LPVOID) \
+    DO_IT(SetStdHandle, nullptr, &AfterSetStdHandle, BOOL, \
+          DWORD, HANDLE) \
+    DO_IT(DuplicateHandle, nullptr, &AfterDuplicateHandle, BOOL, \
+          HANDLE, HANDLE, HANDLE, LPHANDLE, DWORD, BOOL, DWORD)
 
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
 LPCREATE_PROCESS_W g_original_CreateProcessW;
 LPCREATE_PROCESS_A g_original_CreateProcessA;
-LPWRITE_FILE g_original_WriteFile;
-LPWRITE_FILE_EX g_original_WriteFileEx;
-LPWRITE_CONSOLE g_original_WriteConsoleA;
-LPWRITE_CONSOLE g_original_WriteConsoleW;
-LPSET_STD_HANDLE g_original_SetStdHandle;
-LPDUPLICATE_HANDLE g_original_DuplicateHandle;
 std::wstring g_stproxy_path;
 
 std::wstring InitStProxyPath(HMODULE current_module) {
@@ -548,7 +516,7 @@ BOOL WINAPI NewCreateProcessW(
       process_information);
 }
 
-BOOL WINAPI NewWriteFile(
+void BeforeWriteFile(
     HANDLE file,
     LPCVOID buffer,
     DWORD number_of_bytes_to_write,
@@ -565,15 +533,9 @@ BOOL WINAPI NewWriteFile(
       GetExecutor()->PushStdOutput(handle_type, data);
     }
   }
-  return g_original_WriteFile(
-      file,
-      buffer,
-      number_of_bytes_to_write,
-      number_of_bytes_written,
-      overlapped);
 }
 
-BOOL WINAPI NewWriteFileEx(
+void BeforeWriteFileEx(
     HANDLE file,
     LPCVOID buffer,
     DWORD number_of_bytes_to_write,
@@ -590,15 +552,9 @@ BOOL WINAPI NewWriteFileEx(
       GetExecutor()->PushStdOutput(handle_type, data);
     }
   }
-  return g_original_WriteFileEx(
-      file,
-      buffer,
-      number_of_bytes_to_write,
-      overlapped,
-      completion_routine);
 }
 
-BOOL WINAPI NewWriteConsoleA(
+void BeforeWriteConsoleA(
     HANDLE console_output,
     const VOID *buffer,
     DWORD number_of_chars_to_write,
@@ -615,15 +571,9 @@ BOOL WINAPI NewWriteConsoleA(
       GetExecutor()->PushStdOutput(handle_type, data);
     }
   }
-  return g_original_WriteConsoleA(
-      console_output,
-      buffer,
-      number_of_chars_to_write,
-      number_of_chars_written,
-      reserved);
 }
 
-BOOL WINAPI NewWriteConsoleW(
+void BeforeWriteConsoleW(
     HANDLE console_output,
     const VOID *buffer,
     DWORD number_of_chars_to_write,
@@ -646,18 +596,12 @@ BOOL WINAPI NewWriteConsoleW(
       GetExecutor()->PushStdOutput(handle_type, ansi_string);
     }
   }
-  return g_original_WriteConsoleW(
-      console_output,
-      buffer,
-      number_of_chars_to_write,
-      number_of_chars_written,
-      reserved);
 }
 
-BOOL WINAPI NewSetStdHandle(
+void AfterSetStdHandle(
+    BOOL result,
     DWORD handle_id,
     HANDLE handle_val) {
-  BOOL result = g_original_SetStdHandle(handle_id, handle_val);
   if (result &&
      (handle_id == STD_OUTPUT_HANDLE || handle_id == STD_ERROR_HANDLE)) {
     StdHandles::type handle_type = (handle_id == STD_OUTPUT_HANDLE ?
@@ -666,10 +610,10 @@ BOOL WINAPI NewSetStdHandle(
     if (instance)
       instance->SetStdHandle(handle_type, handle_val);
   }
-  return result;
 }
 
-BOOL WINAPI NewDuplicateHandle(
+void AfterDuplicateHandle(
+    BOOL result,
     HANDLE source_process_handle,
     HANDLE source_handle,
     HANDLE target_process_handle,
@@ -677,16 +621,8 @@ BOOL WINAPI NewDuplicateHandle(
     DWORD desired_access,
     BOOL inherit_handle,
     DWORD options) {
-  const BOOL result = g_original_DuplicateHandle(
-      source_process_handle,
-      source_handle,
-      target_process_handle,
-      target_handle,
-      desired_access,
-      inherit_handle,
-      options);
   if (!result)
-    return result;
+    return;
   const HANDLE current_process = GetCurrentProcess();
   StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
   if (source_process_handle == current_process &&
@@ -696,7 +632,6 @@ BOOL WINAPI NewDuplicateHandle(
     if (options & DUPLICATE_CLOSE_SOURCE)
       instance->MarkHandleClosed(source_handle);
   }
-  return result;
 }
 
 void AfterCloseHandle(BOOL result, HANDLE handle) {
@@ -745,18 +680,6 @@ bool InstallHooks(HMODULE current_module) {
       std::make_pair("CreateProcessA", &NewCreateProcessA));
   kernel_intercepts.insert(
       std::make_pair("CreateProcessW", &NewCreateProcessW));
-  kernel_intercepts.insert(
-      std::make_pair("WriteFile", &NewWriteFile));
-  kernel_intercepts.insert(
-      std::make_pair("WriteFileEx", &NewWriteFileEx));
-  kernel_intercepts.insert(
-      std::make_pair("WriteConsoleA", &NewWriteConsoleA));
-  kernel_intercepts.insert(
-      std::make_pair("WriteConsoleW", &NewWriteConsoleW));
-  kernel_intercepts.insert(
-      std::make_pair("SetStdHandle", &NewSetStdHandle));
-  kernel_intercepts.insert(
-      std::make_pair("DuplicateHandle", &NewDuplicateHandle));
   FunctionsInterceptor::Intercepts intercepts;
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
@@ -775,26 +698,8 @@ bool InstallHooks(HMODULE current_module) {
       GetProcAddress(kernel_module, "CreateProcessW"));
   g_original_CreateProcessA = reinterpret_cast<LPCREATE_PROCESS_A>(
       GetProcAddress(kernel_module, "CreateProcessA"));
-  g_original_WriteFile = reinterpret_cast<LPWRITE_FILE>(
-      GetProcAddress(kernel_module, "WriteFile"));
-  g_original_WriteFileEx = reinterpret_cast<LPWRITE_FILE_EX>(
-      GetProcAddress(kernel_module, "WriteFileEx"));
-  g_original_WriteConsoleA = reinterpret_cast<LPWRITE_CONSOLE>(
-      GetProcAddress(kernel_module, "WriteConsoleA"));
-  g_original_WriteConsoleW = reinterpret_cast<LPWRITE_CONSOLE>(
-      GetProcAddress(kernel_module, "WriteConsoleW"));
-  g_original_SetStdHandle = reinterpret_cast<LPSET_STD_HANDLE>(
-      GetProcAddress(kernel_module, "SetStdHandle"));
-  g_original_DuplicateHandle = reinterpret_cast<LPDUPLICATE_HANDLE>(
-      GetProcAddress(kernel_module, "DuplicateHandle"));
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
-  LOG4CPLUS_ASSERT(logger_, g_original_WriteFile);
-  LOG4CPLUS_ASSERT(logger_, g_original_WriteFileEx);
-  LOG4CPLUS_ASSERT(logger_, g_original_WriteConsoleA);
-  LOG4CPLUS_ASSERT(logger_, g_original_WriteConsoleW);
-  LOG4CPLUS_ASSERT(logger_, g_original_SetStdHandle);
-  LOG4CPLUS_ASSERT(logger_, g_original_DuplicateHandle);
   g_stproxy_path = InitStProxyPath(current_module);
   return GetInterceptor()->Hook(intercepts, current_module);
 }
