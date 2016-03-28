@@ -12,6 +12,48 @@
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/in_memory_request_results.h"
 #include "stexecutor/process_creation_request.h"
+#include "boost/archive/xml_oarchive.hpp"
+#include "boost/filesystem/fstream.hpp"
+#include "boost/serialization/split_free.hpp"
+
+namespace boost {
+namespace serialization {
+
+template<typename Archive>
+void save(
+    Archive& ar,  // NOLINT
+    const boost::filesystem::path& path,
+    const unsigned int) {
+  ar & boost::serialization::make_nvp("path", path.generic_string());
+}
+
+template<typename Archive>
+void save(
+    Archive& ar,  // NOLINT
+    const rules_mappers::HashValue& value,
+    const unsigned int) {
+  std::wstringstream strm;
+  strm << value;
+  ar & boost::serialization::make_nvp("hash", strm.str());
+}
+
+template<typename Archive>
+void save(
+    Archive& ar,  // NOLINT
+    const rules_mappers::FileInfo& value,
+    const unsigned int) {
+  ar & boost::serialization::make_nvp(
+      "rel_file_path", value.rel_file_path);
+  ar & boost::serialization::make_nvp(
+      "storage_content_id", value.storage_content_id);
+}
+
+}  // namespace serialization
+}  // namespace boost
+
+BOOST_SERIALIZATION_SPLIT_FREE(boost::filesystem::path)
+BOOST_SERIALIZATION_SPLIT_FREE(rules_mappers::HashValue)
+BOOST_SERIALIZATION_SPLIT_FREE(rules_mappers::FileInfo)
 
 namespace {
 
@@ -84,6 +126,28 @@ void InMemoryRulesMapper::AddRule(
     rules_.insert(std::make_pair(request_hash, std::move(new_results)));
   }
   results->AddRule(std::move(input_files), std::move(response));
+  if (!dbg_dump_rules_dir_.empty()) {
+    DumpReuestResults(results, process_creation_request, request_hash);
+  }
+}
+
+void InMemoryRulesMapper::SetDbgDumpRulesDir(
+    const boost::filesystem::path& dbg_dump_rules_dir) {
+  dbg_dump_rules_dir_ = dbg_dump_rules_dir;
+}
+
+void InMemoryRulesMapper::DumpReuestResults(
+    InMemoryRequestResults* results,
+    const ProcessCreationRequest& process_creation_request,
+    const HashValue& hash_value) {
+  std::wstringstream file_name_buf;
+  file_name_buf << hash_value << L".xml";
+  boost::filesystem::path file_path =
+      dbg_dump_rules_dir_ / file_name_buf.str();
+  boost::filesystem::ofstream stream(file_path);
+  boost::archive::xml_oarchive archive(stream);
+  archive & BOOST_SERIALIZATION_NVP(process_creation_request);
+  archive & boost::serialization::make_nvp("results", *results);
 }
 
 }  // namespace rules_mappers

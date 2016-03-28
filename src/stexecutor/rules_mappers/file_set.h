@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "boost/filesystem.hpp"
+#include "boost/serialization/serialization.hpp"
+#include "boost/serialization/vector.hpp"
 #include "stexecutor/rules_mappers/file_info.h"
 
 namespace rules_mappers {
@@ -27,6 +29,12 @@ class FileSet {
   bool operator==(const FileSet& second) const;
 
  private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive & ar, const unsigned int version) {  // NOLINT
+    ar & BOOST_SERIALIZATION_NVP(sorted_rel_file_paths_);
+  }
+
   std::vector<boost::filesystem::path> sorted_rel_file_paths_;
   size_t hash_value_;
 };

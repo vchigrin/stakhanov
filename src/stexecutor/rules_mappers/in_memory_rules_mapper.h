@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "boost/filesystem/path.hpp"
+#include "boost/serialization/serialization.hpp"
 #include "stexecutor/rules_mappers/rules_mapper.h"
 #include "stexecutor/rules_mappers/rules_hashing.h"
 
@@ -28,14 +30,22 @@ class InMemoryRulesMapper : public RulesMapper {
       const ProcessCreationRequest& process_creation_request,
       std::vector<FileInfo> input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
+  void SetDbgDumpRulesDir(
+      const boost::filesystem::path& dbg_dump_rules_dir);
 
  private:
+  void DumpReuestResults(
+      InMemoryRequestResults* results,
+      const ProcessCreationRequest& process_creation_request,
+      const HashValue& hash_value);
+
   static HashValue ComputeProcessCreationHash(
       const ProcessCreationRequest& process_creation_request);
   std::unordered_map<
       HashValue,
       std::unique_ptr<InMemoryRequestResults>,
       HashValueHasher> rules_;
+  boost::filesystem::path dbg_dump_rules_dir_;
 };
 
 }  // namespace rules_mappers

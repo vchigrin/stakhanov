@@ -88,7 +88,10 @@ int main(int argc, char* argv[]) {
        "Directory with cached build results")
       ("build_dir",
        boost::program_options::value<boost::filesystem::path>()->required(),
-        "Directory where build will run");
+        "Directory where build will run")
+      ("dump_rules_dir",
+       boost::program_options::value<boost::filesystem::path>(),
+        "Directory to dump observed rules for debugging purposes");
   boost::program_options::variables_map variables;
   boost::program_options::store(
       boost::program_options::parse_command_line(argc, argv, desc),
@@ -128,8 +131,12 @@ int main(int argc, char* argv[]) {
       load_library_addr64);
   std::unique_ptr<FilesStorage> file_storage(
       new FilesystemFilesStorage(cache_dir_path));
-  std::unique_ptr<rules_mappers::RulesMapper> rules_mapper(
+  std::unique_ptr<rules_mappers::InMemoryRulesMapper> rules_mapper(
       new rules_mappers::InMemoryRulesMapper());
+  auto it = variables.find("dump_rules_dir");
+  if (it != variables.end()) {
+    rules_mapper->SetDbgDumpRulesDir(it->second.as<boost::filesystem::path>());
+  }
   std::unique_ptr<BuildDirectoryState> build_dir_state(
       new BuildDirectoryState(build_dir_path));
   std::unique_ptr<ExecutingEngine> executing_engine(new ExecutingEngine(

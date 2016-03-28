@@ -8,6 +8,9 @@
 #include <string>
 #include <vector>
 #include "boost/filesystem.hpp"
+#include "boost/serialization/nvp.hpp"
+#include "boost/serialization/serialization.hpp"
+#include "boost/serialization/vector.hpp"
 
 // NOTE: all passed in paths must already be normalized,
 // and have already stripped build_root directory.
@@ -36,6 +39,15 @@ class ProcessCreationRequest {
   }
 
  private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive & ar, const unsigned int version) {  // NOLINT
+    ar & BOOST_SERIALIZATION_NVP(exe_path_);
+    ar & BOOST_SERIALIZATION_NVP(startup_directory_);
+    ar & BOOST_SERIALIZATION_NVP(command_line_);
+    ar & BOOST_SERIALIZATION_NVP(sorted_environment_strings_);
+  }
+
   boost::filesystem::path exe_path_;
   boost::filesystem::path startup_directory_;
   std::vector<std::string> command_line_;

@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "boost/serialization/unique_ptr.hpp"
+#include "boost/serialization/unordered_map.hpp"
 #include "stexecutor/rules_mappers/file_info.h"
 #include "stexecutor/rules_mappers/file_set.h"
 #include "stexecutor/rules_mappers/rules_hashing.h"
@@ -29,6 +31,12 @@ class InMemoryRequestResults {
       std::vector<FileInfo>* input_files);
 
  private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive & ar, const unsigned int version) {  // NOLINT
+    ar & BOOST_SERIALIZATION_NVP(responses_);
+  }
+
   using FileSetHashToResponse = std::unordered_map<
       HashValue,
       std::unique_ptr<CachedExecutionResponse>,
