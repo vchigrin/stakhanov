@@ -38,7 +38,7 @@ ExecutingEngine::~ExecutingEngine() {
 ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
     int parent_command_id,
     const ProcessCreationRequest& process_creation_request) {
-  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   const int command_id = next_command_id_++;
   std::vector<rules_mappers::FileInfo> input_files;
   const rules_mappers::CachedExecutionResponse* execution_response =
@@ -77,7 +77,7 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
 
 void ExecutingEngine::SaveCommandResults(
     const ExecutedCommandInfo& command_info) {
-  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_ASSERT(logger_, command_info.command_id >= kFirstUserCommandId);
   auto it = running_commands_.find(command_info.command_id);
   if (it == running_commands_.end()) {
@@ -185,7 +185,7 @@ void ExecutingEngine::UpdateAllParentResponses(
 void ExecutingEngine::AssociatePIDWithCommandId(
     int parent_command_id,
     int32_t pid, int command_id, bool should_append_std_streams) {
-  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_ASSERT(
       logger_, child_command_id_to_parent_.count(command_id) == 0);
   child_command_id_to_parent_.insert(
@@ -211,7 +211,7 @@ void ExecutingEngine::RegisterByPID(
       int32_t pid,
       int* command_id,
       std::vector<int>* command_ids_should_append_std_streams) {
-  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   auto it = pid_to_command_id_.find(pid);
   if (it == pid_to_command_id_.end()) {
     LOG4CPLUS_ERROR(logger_, "No command id for pid " << pid);

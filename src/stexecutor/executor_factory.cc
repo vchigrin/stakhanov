@@ -26,7 +26,7 @@ ExecutorFactory::ExecutorFactory(
 ExecutorIf* ExecutorFactory::getHandler(
     const ::apache::thrift::TConnectionInfo& connInfo) {
   {
-    std::unique_lock<std::mutex> lock(instance_lock_);
+    std::lock_guard<std::mutex> lock(instance_lock_);
     ++active_handlers_count_;
   }
   return new ExecutorImpl(dll_injector_.get(), executing_engine_, this);

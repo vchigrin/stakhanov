@@ -62,7 +62,7 @@ void FillDrivePaths(std::vector<DrivePath>* drive_paths) {
 std::wstring DosPathFromNtPath(const std::wstring& nt_path) {
   static std::mutex dos_path_mutex;
   static std::vector<DrivePath> drive_paths;
-  std::unique_lock<std::mutex> dos_path_lock(dos_path_mutex);
+  std::lock_guard<std::mutex> dos_path_lock(dos_path_mutex);
   if (drive_paths.empty())
     FillDrivePaths(&drive_paths);
   for (const DrivePath& path  : drive_paths) {

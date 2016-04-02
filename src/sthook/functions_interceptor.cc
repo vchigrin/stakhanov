@@ -70,7 +70,7 @@ FunctionsInterceptor::~FunctionsInterceptor() {
 }
 
 void FunctionsInterceptor::NewModuleLoaded(HMODULE module) {
-  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   std::unordered_set<HMODULE> modules_to_process = PatchIATAndGetDeps(module);
   while (!modules_to_process.empty()) {
     HMODULE next_module = *modules_to_process.begin();
@@ -86,7 +86,7 @@ void FunctionsInterceptor::NewModuleLoaded(HMODULE module) {
 bool FunctionsInterceptor::Hook(
     const Intercepts& intercepts,
     HMODULE excluded_module) {
-  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_ASSERT(logger_, !hooked_);
   if (hooked_)
     return false;
@@ -186,7 +186,7 @@ std::unordered_set<HMODULE> FunctionsInterceptor::PatchIATAndGetDeps(
 }
 
 void FunctionsInterceptor::Unhook() {
-  std::unique_lock<std::mutex> instance_lock(instance_lock_);
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_ASSERT(logger_, hooked_);
   if (!hooked_)
     return;
