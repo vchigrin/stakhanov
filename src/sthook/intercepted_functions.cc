@@ -358,6 +358,9 @@ bool CreateProxyProcess(
   startup_info.hStdInput = std_input_handle;
   startup_info.hStdOutput = std_output_handle;
   startup_info.hStdError = std_error_handle;
+  if (std_output_handle || std_error_handle || std_input_handle) {
+    startup_info.dwFlags = STARTF_USESTDHANDLES;
+  }
   BOOL result = g_original_CreateProcessW(
         NULL,
         &command_line[0],
