@@ -9,6 +9,7 @@
 #include "log4cplus/loggingmacros.h"
 #include "stexecutor/dll_injector.h"
 #include "stexecutor/executing_engine.h"
+#include "stexecutor/executor_factory.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
 
@@ -37,9 +38,11 @@ boost::filesystem::path NormalizePath(const std::string& abs_path) {
 
 ExecutorImpl::ExecutorImpl(
     DllInjector* dll_injector,
-    ExecutingEngine* executing_engine)
+    ExecutingEngine* executing_engine,
+    ExecutorFactory* executor_factory)
     : dll_injector_(dll_injector),
-      executing_engine_(executing_engine) {
+      executing_engine_(executing_engine),
+      executor_factory_(executor_factory) {
 }
 
 bool ExecutorImpl::HookedCreateFile(
@@ -67,18 +70,25 @@ void ExecutorImpl::Initialize(
   if (is_root_process) {
     command_info_.command_id = ExecutingEngine::kRootCommandId;
   } else {
-    command_info_.command_id = executing_engine_->TakeCommandIDForPID(
-        current_pid);
+     std::vector<int> command_ids_should_append;
+     executing_engine_->RegisterByPID(
+         current_pid,
+         &command_info_.command_id,
+         &command_ids_should_append);
+     executors_should_append_std_streams_ = executor_factory_->GetExecutors(
+         command_ids_should_append);
   }
+  executor_factory_->RegisterExecutor(command_id(), this);
 }
 
 void ExecutorImpl::OnSuspendedProcessCreated(
     const int32_t child_pid,
-    const int32_t executor_command_id) {
+    const int32_t executor_command_id,
+    const bool append_std_streams) {
   LOG4CPLUS_INFO(logger_, "Created process " << child_pid);
   executing_engine_->AssociatePIDWithCommandId(
       command_info_.command_id,
-      child_pid, executor_command_id);
+      child_pid, executor_command_id, append_std_streams);
   if (!dll_injector_->InjectInto(child_pid)) {
     LOG4CPLUS_ERROR(logger_, "Failed inject dll into process " << child_pid);
   }
@@ -113,10 +123,16 @@ void ExecutorImpl::OnBeforeProcessCreate(
 
 void ExecutorImpl::PushStdOutput(
     const StdHandles::type handle, const std::string& data) {
-  if (handle == StdHandles::StdOutput)
-    command_info_.result_stdout += data;
-  else
-    command_info_.result_stderr += data;
+  {
+    std::lock_guard<std::mutex> std_handles_lock(std_handles_lock_);
+    if (handle == StdHandles::StdOutput)
+      command_info_.result_stdout += data;
+    else
+      command_info_.result_stderr += data;
+  }
+  for (const auto& executor : executors_should_append_std_streams_) {
+    executor->PushStdOutput(handle, data);
+  }
 }
 
 void ExecutorImpl::FillExitCode() {

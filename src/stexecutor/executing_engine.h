@@ -51,8 +51,12 @@ class ExecutingEngine {
   void SaveCommandResults(const ExecutedCommandInfo& command_info);
   void AssociatePIDWithCommandId(
       int parent_command_id,
-      int32_t pid, int command_id);
-  int TakeCommandIDForPID(int32_t pid);
+      int32_t pid, int command_id,
+      bool should_append_std_streams);
+  void RegisterByPID(
+      int32_t pid,
+      int* command_id,
+      std::vector<int>* command_ids_should_append_std_streams);
 
  private:
   std::mutex instance_lock_;
@@ -74,7 +78,11 @@ class ExecutingEngine {
   std::unordered_map<
       int, std::unique_ptr<CumulativeExecutionResponseBuilder>>
           parent_command_id_to_results_;
-  std::unordered_map<int, int> child_command_id_to_parent_;
+  struct ParentInfo {
+    int command_id;
+    bool should_append_std_streams;
+  };
+  std::unordered_map<int, ParentInfo> child_command_id_to_parent_;
 
   std::unordered_map<int32_t, int> pid_to_command_id_;
   int next_command_id_;

@@ -12,8 +12,8 @@
 #include "boost/filesystem.hpp"
 
 struct ExecutedCommandInfo {
-  int exit_code;
-  int command_id;
+  int exit_code = 0;
+  int command_id = 0;
   std::unordered_set<boost::filesystem::path, base::FilePathHash> input_files;
   std::unordered_set<boost::filesystem::path, base::FilePathHash> output_files;
   std::vector<int> child_command_ids;

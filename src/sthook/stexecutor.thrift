@@ -27,6 +27,12 @@ service Executor {
       3:string startup_dir_utf8,
       4:list<string> environment_strings);
 
-  void OnSuspendedProcessCreated(1:i32 child_pid, 2:i32 executor_commmand_id);
+  void OnSuspendedProcessCreated(
+      1:i32 child_pid,
+      2:i32 executor_commmand_id,
+      // If append_std_streams is true - then all writes to std handles
+      // must be considered also as writes to std handles of parent
+      // process(es).
+      3:bool append_std_streams);
   void OnFileDeleted(1:string abs_path);
 }

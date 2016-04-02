@@ -431,6 +431,7 @@ BOOL CreateProcessImpl(
         GetEnvironmentStringsAsUTF8());
   }
   BOOL result = FALSE;
+
   if (cache_hit_info.cache_hit) {
     result = CreateProxyProcess(
         cache_hit_info,
@@ -454,13 +455,17 @@ BOOL CreateProcessImpl(
   }
   if (!result)
     return result;
+
+  const bool append_std_streams = (
+      startup_info->dwFlags & STARTF_USESTDHANDLES) == 0;
   if (!cache_hit_info.cache_hit) {
     // Cache hits should not go through all pipeline with
     // injecting interceptor DLLs, tracking files, etc.
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
     GetExecutor()->OnSuspendedProcessCreated(
         process_information->dwProcessId,
-        cache_hit_info.executor_command_id);
+        cache_hit_info.executor_command_id,
+        append_std_streams);
   }
   if (!request_suspended)
     ResumeThread(process_information->hThread);

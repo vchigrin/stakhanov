@@ -144,7 +144,7 @@ void ExecutingEngine::SaveCommandResults(
         command_info.command_id);
     if (it_parent_id != child_command_id_to_parent_.end()) {
       UpdateAllParentResponses(
-          it_parent_id->second,
+          it_parent_id->second.command_id,
           command_info.command_id,
           input_files,
           *execution_response);
@@ -178,18 +178,20 @@ void ExecutingEngine::UpdateAllParentResponses(
         current_command_id);
     if (it_parent_id == child_command_id_to_parent_.end())
       break;
-    current_command_id = it_parent_id->second;
+    current_command_id = it_parent_id->second.command_id;
   }
 }
 
 void ExecutingEngine::AssociatePIDWithCommandId(
     int parent_command_id,
-    int32_t pid, int command_id) {
+    int32_t pid, int command_id, bool should_append_std_streams) {
   std::unique_lock<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_ASSERT(
       logger_, child_command_id_to_parent_.count(command_id) == 0);
   child_command_id_to_parent_.insert(
-      std::make_pair(command_id, parent_command_id));
+      std::make_pair(
+          command_id,
+          ParentInfo{parent_command_id, should_append_std_streams}));
   pid_to_command_id_.insert(std::make_pair(pid, command_id));
   // Emulate "child-parent" relations between all processes in tree,
   // So top-level process will grab all input-output files.
@@ -201,20 +203,36 @@ void ExecutingEngine::AssociatePIDWithCommandId(
     auto it = child_command_id_to_parent_.find(cur_parent_id);
     if (it == child_command_id_to_parent_.end())
       break;
-    cur_parent_id = it->second;
+    cur_parent_id = it->second.command_id;
   }
 }
 
-int ExecutingEngine::TakeCommandIDForPID(int32_t pid) {
+void ExecutingEngine::RegisterByPID(
+      int32_t pid,
+      int* command_id,
+      std::vector<int>* command_ids_should_append_std_streams) {
   std::unique_lock<std::mutex> instance_lock(instance_lock_);
   auto it = pid_to_command_id_.find(pid);
   if (it == pid_to_command_id_.end()) {
     LOG4CPLUS_ERROR(logger_, "No command id for pid " << pid);
-    return kInvalidCommandId;
+    *command_id = kInvalidCommandId;
+    return;
   }
-  int result = it->second;
+  *command_id = it->second;
   pid_to_command_id_.erase(it);
-  return result;
+
+  int current_command_id = *command_id;
+  while (true) {
+    auto it_parent_command = child_command_id_to_parent_.find(
+        current_command_id);
+    if (it_parent_command == child_command_id_to_parent_.end())
+      break;
+    if (!it_parent_command->second.should_append_std_streams)
+      break;
+    command_ids_should_append_std_streams->push_back(
+        it_parent_command->second.command_id);
+    current_command_id = it_parent_command->second.command_id;
+  }
 }
 
 CumulativeExecutionResponseBuilder*
