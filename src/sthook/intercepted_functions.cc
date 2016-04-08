@@ -164,6 +164,8 @@ NTSTATUS NTAPI NewNtCreateFile(
       ea_length);
   if (!NT_SUCCESS(result))
      return result;
+  if (create_options & FILE_DELETE_ON_CLOSE)
+     return result;  // Do not process temporary files.
   if (object_attributes && object_attributes->ObjectName) {
     ExecutorIf* executor = GetExecutor();
     if (executor) {
