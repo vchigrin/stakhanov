@@ -60,6 +60,22 @@ typedef BOOL (WINAPI *LPCREATE_PROCESS_A)(
     LPSTARTUPINFOA startup_info,
     LPPROCESS_INFORMATION process_information);
 
+typedef struct _FILE_RENAME_INFORMATION {
+  BOOLEAN ReplaceIfExists;
+  HANDLE  RootDirectory;
+  ULONG   FileNameLength;
+  WCHAR   FileName[1];
+} FILE_RENAME_INFORMATION, *PFILE_RENAME_INFORMATION;
+
+typedef NTSTATUS (NTAPI *LPNTSET_INFORMATION_FILE)(
+    HANDLE file_handle,
+    PIO_STATUS_BLOCK io_status_block,
+    PVOID file_information,
+    ULONG length,
+    int file_information_class
+);
+
+static const int FileRenameInformation = 10;
 
 #define FOR_EACH_INTERCEPTS(DO_IT) \
     DO_IT(CloseHandle, nullptr, &AfterCloseHandle, BOOL, HANDLE) \
@@ -85,7 +101,32 @@ log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
 LPCREATE_PROCESS_W g_original_CreateProcessW;
 LPCREATE_PROCESS_A g_original_CreateProcessA;
+LPNTSET_INFORMATION_FILE g_original_NtSetInformationFile;
 std::wstring g_stproxy_path;
+
+
+std::wstring LongPathNameFromRootDirAndString(
+      HANDLE root_directory, const std::wstring& name) {
+  static const wchar_t kPossiblePrefix1[] = L"\\??\\";
+  static const wchar_t kPossiblePrefix2[] = L"\\\\?\\";
+  std::wstring result;
+  if (root_directory) {
+    std::wstring dir_path = base::GetFilePathFromHandle(
+        root_directory);
+    if (dir_path[dir_path.length() - 1] != L'\\')
+      dir_path += L"\\";
+    result = dir_path + name;
+  } else {
+    result = name;
+  }
+  if (result.find(kPossiblePrefix1) == 0)
+    result = result.substr(wcslen(kPossiblePrefix1));
+  if (result.find(kPossiblePrefix2) == 0)
+    result = result.substr(wcslen(kPossiblePrefix2));
+  if (result[result.length() - 1] == L'\\')
+    result = result.substr(0, result.length() - 1);
+  return base::ToLongPathName(result);
+}
 
 std::wstring InitStProxyPath(HMODULE current_module) {
   std::vector<wchar_t> buffer(MAX_PATH + 1);
@@ -169,27 +210,13 @@ NTSTATUS NTAPI NewNtCreateFile(
   if (object_attributes && object_attributes->ObjectName) {
     ExecutorIf* executor = GetExecutor();
     if (executor) {
-      // May be if initialization not finished yet. Although we call
-      // Initialize() during DllMain, opening Executor communication
-      // internlally causes NtCreateFile call, so avoid recursion.
-      std::wstring name_str = base::StringFromAPIString(
-          *object_attributes->ObjectName);
-      static const wchar_t kPossiblePrefix1[] = L"\\??\\";
-      static const wchar_t kPossiblePrefix2[] = L"\\\\?\\";
-      if (object_attributes->RootDirectory) {
-        std::wstring dir_path = base::GetFilePathFromHandle(
-            object_attributes->RootDirectory);
-        if (dir_path[dir_path.length() - 1] != L'\\')
-          dir_path += L"\\";
-        name_str = dir_path + name_str;
-      }
-      if (name_str.find(kPossiblePrefix1) == 0)
-        name_str = name_str.substr(wcslen(kPossiblePrefix1));
-      if (name_str.find(kPossiblePrefix2) == 0)
-        name_str = name_str.substr(wcslen(kPossiblePrefix2));
-      if (name_str[name_str.length() - 1] == L'\\')
-        name_str = name_str.substr(0, name_str.length() - 1);
-      name_str = base::ToLongPathName(name_str);
+      // Executor may be nullptr if initialization not finished yet.
+      // Although we call Initialize() during DllMain, opening Executor
+      // communication internlally causes NtCreateFile call, so avoid recursion.
+      std::wstring name_str = LongPathNameFromRootDirAndString(
+          object_attributes->RootDirectory,
+          base::StringFromAPIString(*object_attributes->ObjectName));
+
       DWORD attributes = ::GetFileAttributesW(name_str.c_str());
       // It is OK for attributes to be invalid, for newly created file.
       if (attributes == INVALID_FILE_ATTRIBUTES ||
@@ -204,6 +231,48 @@ NTSTATUS NTAPI NewNtCreateFile(
         }
       }
     }
+  }
+  return result;
+}
+
+NTSTATUS NTAPI NewNtSetInformationFile(
+    HANDLE file_handle,
+    PIO_STATUS_BLOCK io_status_block,
+    PVOID file_information,
+    ULONG length,
+    int file_information_class) {
+  if (file_information_class != FileRenameInformation) {
+    return g_original_NtSetInformationFile(
+        file_handle,
+        io_status_block,
+        file_information,
+        length,
+        file_information_class);
+  }
+  std::wstring old_name_str = base::GetFilePathFromHandle(file_handle);
+  NTSTATUS result = g_original_NtSetInformationFile(
+      file_handle,
+      io_status_block,
+      file_information,
+      length,
+      file_information_class);
+  if (!NT_SUCCESS(result) || file_information_class != FileRenameInformation)
+    return result;
+  ExecutorIf* executor = GetExecutor();
+  if (!executor)
+    return result;
+  const FILE_RENAME_INFORMATION* rename_info =
+      reinterpret_cast<const FILE_RENAME_INFORMATION*>(file_information);
+  std::wstring new_name_str = LongPathNameFromRootDirAndString(
+      rename_info->RootDirectory,
+      std::wstring(
+          rename_info->FileName,
+          rename_info->FileNameLength / sizeof(WCHAR)));
+  {
+    std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+    executor->HookedRenameFile(
+        base::ToUTF8FromWide(old_name_str),
+        base::ToUTF8FromWide(new_name_str));
   }
   return result;
 }
@@ -709,6 +778,8 @@ bool InstallHooks(HMODULE current_module) {
   // processes link directly with it, skipping kernel32.dll (e.g. cmd.exe).
   FunctionsInterceptor::DllInterceptedFunctions kernel_intercepts;
   ntdll_intercepts.insert(std::make_pair("NtCreateFile", &NewNtCreateFile));
+  ntdll_intercepts.insert(std::make_pair(
+      "NtSetInformationFile", &NewNtSetInformationFile));
   ntdll_intercepts.insert(std::make_pair("LdrLoadDll", &NewLdrLoadDll));
   kernel_intercepts.insert(
       std::make_pair("CreateProcessA", &NewCreateProcessA));
@@ -732,8 +803,11 @@ bool InstallHooks(HMODULE current_module) {
       GetProcAddress(kernel_module, "CreateProcessW"));
   g_original_CreateProcessA = reinterpret_cast<LPCREATE_PROCESS_A>(
       GetProcAddress(kernel_module, "CreateProcessA"));
+  g_original_NtSetInformationFile = reinterpret_cast<LPNTSET_INFORMATION_FILE>(
+      GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtSetInformationFile"));
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
+  LOG4CPLUS_ASSERT(logger_, g_original_NtSetInformationFile);
   g_stproxy_path = InitStProxyPath(current_module);
   return GetInterceptor()->Hook(intercepts, current_module);
 }

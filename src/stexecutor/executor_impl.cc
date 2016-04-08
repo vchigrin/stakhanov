@@ -58,6 +58,23 @@ bool ExecutorImpl::HookedCreateFile(
   return true;
 }
 
+void ExecutorImpl::HookedRenameFile(
+    const std::string& old_name_str,
+    const std::string& new_name_str) {
+  boost::filesystem::path norm_old_path = NormalizePath(old_name_str);
+  boost::filesystem::path norm_new_path = NormalizePath(new_name_str);
+  auto it_output = command_info_.output_files.find(norm_old_path);
+  if (it_output != command_info_.output_files.end()) {
+    // One of existing outputs renamed.
+    command_info_.output_files.erase(it_output);
+  } else {
+    // This is not our output - add both "input" andn "output" to
+    // describe rename.
+    command_info_.input_files.insert(norm_old_path);
+  }
+  command_info_.output_files.insert(norm_new_path);
+}
+
 void ExecutorImpl::Initialize(
     const int32_t current_pid, const bool is_root_process) {
   process_handle_ = base::ScopedHandle(

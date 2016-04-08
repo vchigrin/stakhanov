@@ -28,6 +28,9 @@ class ExecutorImpl : public ExecutorIf {
       const int32_t current_pid, const bool is_root_process) override;
   bool HookedCreateFile(
       const std::string& abs_path, const bool for_writing) override;
+  void HookedRenameFile(
+      const std::string& old_name_str,
+      const std::string& new_name_str) override;
   void PushStdOutput(
       const StdHandles::type handle, const std::string& data) override;
   void OnBeforeProcessCreate(
