@@ -71,8 +71,8 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
   return ProcessCreationResponse::BuildCacheHitResponse(
       command_id,
       execution_response->exit_code,
-      execution_response->result_stdout,
-      execution_response->result_stderr);
+      files_storage_->RetrieveContent(execution_response->stdout_content_id),
+      files_storage_->RetrieveContent(execution_response->stderr_content_id));
 }
 
 void ExecutingEngine::SaveCommandResults(
@@ -118,12 +118,16 @@ void ExecutingEngine::SaveCommandResults(
     }
     input_files.push_back(rules_mappers::FileInfo(rel_path, content_id));
   }
+  std::string stdout_id = files_storage_->StoreContent(
+      command_info.result_stdout);
+  std::string stderr_id = files_storage_->StoreContent(
+      command_info.result_stderr);
   std::unique_ptr<rules_mappers::CachedExecutionResponse> execution_response(
       new rules_mappers::CachedExecutionResponse(
           output_files,
           command_info.exit_code,
-          command_info.result_stdout,
-          command_info.result_stderr));
+          stdout_id,
+          stderr_id));
   if (!command_info.child_command_ids.empty())  {
     CumulativeExecutionResponseBuilder* builder = GetCumulativeResponseBuilder(
         command_info.command_id);

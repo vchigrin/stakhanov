@@ -32,8 +32,8 @@ void CumulativeExecutionResponseBuilder::SetParentExecutionResponse(
   LOG4CPLUS_ASSERT(logger_, !parent_completed_);
   parent_completed_ = true;
   exit_code_ = execution_response.exit_code;
-  result_stdout_ = execution_response.result_stdout;
-  result_stderr_ = execution_response.result_stderr;
+  stdout_content_id_ = execution_response.stdout_content_id;
+  stderr_content_id_ = execution_response.stderr_content_id;
   AddFileSets(input_files, execution_response.output_files);
 }
 
@@ -77,8 +77,8 @@ std::unique_ptr<rules_mappers::CachedExecutionResponse>
       new rules_mappers::CachedExecutionResponse(
           output_files,
           exit_code_,
-          result_stdout_,
-          result_stderr_));
+          stdout_content_id_,
+          stderr_content_id_));
 }
 
 bool CumulativeExecutionResponseBuilder::IsComplete() const {

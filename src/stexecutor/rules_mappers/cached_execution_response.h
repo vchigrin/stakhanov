@@ -18,25 +18,25 @@ struct CachedExecutionResponse {
   CachedExecutionResponse(
       const std::vector<FileInfo>& output_files,
       int exit_code,
-      const std::string& result_stdout,
-      const std::string& result_stderr)
+      const std::string& stdout_content_id,
+      const std::string& stderr_content_id)
       : output_files(output_files),
         exit_code(exit_code),
-        result_stdout(result_stdout),
-        result_stderr(result_stderr) {}
+        stdout_content_id(stdout_content_id),
+        stderr_content_id(stderr_content_id) {}
 
   std::vector<FileInfo> output_files;
   int exit_code;
-  std::string result_stdout;
-  std::string result_stderr;
+  std::string stdout_content_id;
+  std::string stderr_content_id;
 
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive & ar, const unsigned int version) {  // NOLINT
     ar & BOOST_SERIALIZATION_NVP(output_files);
     ar & BOOST_SERIALIZATION_NVP(exit_code);
-    ar & BOOST_SERIALIZATION_NVP(result_stdout);
-    ar & BOOST_SERIALIZATION_NVP(result_stderr);
+    ar & BOOST_SERIALIZATION_NVP(stdout_content_id);
+    ar & BOOST_SERIALIZATION_NVP(stderr_content_id);
   }
 };
 

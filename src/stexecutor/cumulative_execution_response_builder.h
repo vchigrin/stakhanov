@@ -48,8 +48,8 @@ class CumulativeExecutionResponseBuilder {
   int exit_code_;
   bool parent_completed_;
   std::unordered_set<int> running_child_ids_;
-  std::string result_stdout_;
-  std::string result_stderr_;
+  std::string stdout_content_id_;
+  std::string stderr_content_id_;
 };
 
 #endif  // STEXECUTOR_CUMULATIVE_EXECUTION_RESPONSE_BUILDER_H_

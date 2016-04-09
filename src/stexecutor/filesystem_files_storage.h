@@ -17,9 +17,13 @@ class FilesystemFilesStorage : public FilesStorage {
   bool GetFileFromStorage(
       const std::string& storage_id,
       const boost::filesystem::path& dest_path) override;
+  std::string StoreContent(const std::string& data) override;
+  std::string RetrieveContent(const std::string& storage_id) override;
 
  private:
   std::string GetFileHash(const boost::filesystem::path& file_path);
+  boost::filesystem::path PreparePlace(const std::string& storage_id);
+  boost::filesystem::path FilePathFromId(const std::string& storage_id);
   const boost::filesystem::path storage_dir_;
 };
 
