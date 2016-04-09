@@ -78,11 +78,12 @@ bool FilesystemFilesStorage::GetFileFromStorage(
   }
   // TODO(vchigrin): Consider usage of hard links.
   boost::system::error_code error_code;
+  boost::filesystem::create_directories(dest_path.parent_path());
   boost::filesystem::copy_file(
-    src_path,
-    dest_path,
-    boost::filesystem::copy_option::overwrite_if_exists,
-    error_code);
+      src_path,
+      dest_path,
+      boost::filesystem::copy_option::overwrite_if_exists,
+      error_code);
   if (error_code) {
     LOG4CPLUS_ERROR(
         logger_, "Failed copy file " << src_path.c_str()
