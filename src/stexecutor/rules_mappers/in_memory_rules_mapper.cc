@@ -96,10 +96,7 @@ HashValue InMemoryRulesMapper::ComputeProcessCreationHash(
   for (const std::string& argument : process_creation_request.command_line()) {
     HashString(&hasher, argument);
   }
-  for (const std::string& env_string :
-      process_creation_request.sorted_environment_strings()) {
-    HashString(&hasher, env_string);
-  }
+  HashString(&hasher, process_creation_request.environment_hash());
   HashValue request_hash;
   hasher.Final(request_hash.data());
   return request_hash;

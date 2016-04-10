@@ -91,7 +91,10 @@ int main(int argc, char* argv[]) {
         "Directory where build will run")
       ("dump_rules_dir",
        boost::program_options::value<boost::filesystem::path>(),
-        "Directory to dump observed rules for debugging purposes");
+        "Directory to dump observed rules for debugging purposes")
+      ("dump_env_dir",
+       boost::program_options::value<boost::filesystem::path>(),
+        "Directory to dump env blocks for debugging purposes");
   boost::program_options::variables_map variables;
   boost::program_options::store(
       boost::program_options::parse_command_line(argc, argv, desc),
@@ -147,6 +150,11 @@ int main(int argc, char* argv[]) {
       boost::make_shared<ExecutorFactory>(
           std::move(dll_injector),
           executing_engine.get());
+  it = variables.find("dump_env_dir");
+  if (it != variables.end()) {
+    executor_factory->set_dump_env_dir(
+        it->second.as<boost::filesystem::path>());
+  }
   g_server = std::make_unique<ServerType>(
       boost::make_shared<ExecutorProcessorFactory>(executor_factory),
       boost::make_shared<TServerSocket>(sthook::GetExecutorPort()),

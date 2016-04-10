@@ -29,7 +29,10 @@ ExecutorIf* ExecutorFactory::getHandler(
     std::lock_guard<std::mutex> lock(instance_lock_);
     ++active_handlers_count_;
   }
-  return new ExecutorImpl(dll_injector_.get(), executing_engine_, this);
+  ExecutorImpl* result = new ExecutorImpl(
+      dll_injector_.get(), executing_engine_, this);
+  result->set_dump_env_dir(dump_env_dir_);
+  return result;
 }
 
 void ExecutorFactory::releaseHandler(ExecutorIf* handler) {

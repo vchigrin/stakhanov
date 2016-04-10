@@ -20,7 +20,7 @@ class ProcessCreationRequest {
       const boost::filesystem::path& exe_path,
       const boost::filesystem::path& startup_directory,
       const std::vector<std::string>& command_line,
-      const std::vector<std::string>& environment_strings);
+      const std::string& environment_hash);
 
   const boost::filesystem::path& exe_path() const {
     return exe_path_;
@@ -34,8 +34,8 @@ class ProcessCreationRequest {
     return command_line_;
   }
 
-  const std::vector<std::string>& sorted_environment_strings() const {
-    return sorted_environment_strings_;
+  const std::string& environment_hash() const {
+    return environment_hash_;
   }
 
  private:
@@ -45,13 +45,13 @@ class ProcessCreationRequest {
     ar & BOOST_SERIALIZATION_NVP(exe_path_);
     ar & BOOST_SERIALIZATION_NVP(startup_directory_);
     ar & BOOST_SERIALIZATION_NVP(command_line_);
-    ar & BOOST_SERIALIZATION_NVP(sorted_environment_strings_);
+    ar & BOOST_SERIALIZATION_NVP(environment_hash_);
   }
 
   boost::filesystem::path exe_path_;
   boost::filesystem::path startup_directory_;
   std::vector<std::string> command_line_;
-  std::vector<std::string> sorted_environment_strings_;
+  std::string environment_hash_;
 };
 
 // For ease of logging.

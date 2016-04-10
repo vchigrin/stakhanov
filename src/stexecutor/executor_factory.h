@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "boost/filesystem.hpp"
 #include "gen-cpp/Executor.h"
 
 class DllInjector;
@@ -29,6 +30,9 @@ class ExecutorFactory : public ExecutorIfFactory {
   void RegisterExecutor(int command_id, ExecutorImpl* instance);
   std::vector<std::shared_ptr<ExecutorImpl>> GetExecutors(
       const std::vector<int>& command_ids);
+  void set_dump_env_dir(const boost::filesystem::path& dump_env_dir) {
+    dump_env_dir_ = dump_env_dir;
+  }
 
  private:
   std::unique_ptr<DllInjector> dll_injector_;
@@ -37,6 +41,7 @@ class ExecutorFactory : public ExecutorIfFactory {
   std::condition_variable handler_released_;
   std::mutex instance_lock_;
   std::unordered_map<int, std::shared_ptr<ExecutorImpl>> active_executors_;
+  boost::filesystem::path dump_env_dir_;
 };
 
 #endif  // STEXECUTOR_EXECUTOR_FACTORY_H_

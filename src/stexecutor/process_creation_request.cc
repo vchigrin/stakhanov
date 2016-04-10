@@ -9,13 +9,11 @@ ProcessCreationRequest::ProcessCreationRequest(
     const boost::filesystem::path& exe_path,
     const boost::filesystem::path& startup_directory,
     const std::vector<std::string>& command_line,
-    const std::vector<std::string>& environment_strings)
+    const std::string& environment_hash)
     : exe_path_(exe_path),
       startup_directory_(startup_directory),
       command_line_(command_line),
-      sorted_environment_strings_(environment_strings) {
-  std::sort(
-      sorted_environment_strings_.begin(), sorted_environment_strings_.end());
+      environment_hash_(environment_hash) {
 }
 
 

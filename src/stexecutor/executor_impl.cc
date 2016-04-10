@@ -4,6 +4,8 @@
 
 #include "stexecutor/executor_impl.h"
 
+#include <algorithm>
+
 #include "base/string_utils.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
@@ -12,6 +14,7 @@
 #include "stexecutor/executor_factory.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
+#include "third_party/cryptopp/md5.h"
 
 namespace {
 
@@ -128,7 +131,7 @@ void ExecutorImpl::OnBeforeProcessCreate(
       NormalizePath(exe_path),
       NormalizePath(startup_directory),
       arguments,
-      environment_strings);
+      ComputeEnvironmentHash(environment_strings));
   ProcessCreationResponse response = executing_engine_->AttemptCacheExecute(
       command_info_.command_id, creation_request);
   result.cache_hit = response.is_cache_hit();
@@ -136,6 +139,44 @@ void ExecutorImpl::OnBeforeProcessCreate(
   result.result_stdout = response.result_stdout();
   result.result_stderr = response.result_stderr();
   result.executor_command_id = response.real_command_id();
+}
+
+std::string ExecutorImpl::ComputeEnvironmentHash(
+    const std::vector<std::string>& env) {
+  std::vector<std::string> sorted_env(env);
+  std::sort(sorted_env.begin(), sorted_env.end());
+  CryptoPP::Weak::MD5 hasher;
+  for (const std::string& str : sorted_env) {
+    if (!str.empty()) {
+      hasher.Update(
+          reinterpret_cast<const uint8_t*>(str.data()), str.length());
+    }
+  }
+  std::vector<uint8_t> digest(hasher.DigestSize());
+  hasher.Final(&digest[0]);
+  std::string result = base::BytesToHexString(digest);
+  DumpEnvIfNeed(result, sorted_env);
+  return result;
+}
+
+void ExecutorImpl::DumpEnvIfNeed(
+    const std::string& env_hash, const std::vector<std::string>& sorted_env) {
+  if (dump_env_dir_.empty())
+    return;
+  boost::filesystem::path file_path = dump_env_dir_ / env_hash;
+  boost::filesystem::filebuf filebuf;
+  if (boost::filesystem::exists(file_path))
+    return;
+  if (!filebuf.open(file_path, std::ios::out | std::ios::binary)) {
+    LOG4CPLUS_ERROR(logger_, "Failed open file " << file_path.c_str());
+    return;
+  }
+  for (const std::string& str : sorted_env) {
+    if (!str.empty()) {
+      filebuf.sputn(str.data(), str.length());
+      filebuf.sputc('\n');
+    }
+  }
 }
 
 void ExecutorImpl::PushStdOutput(

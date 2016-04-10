@@ -51,8 +51,16 @@ class ExecutorImpl : public ExecutorIf {
   int command_id() const {
     return command_info_.command_id;
   }
+  void set_dump_env_dir(const boost::filesystem::path& dump_env_dir) {
+    dump_env_dir_ = dump_env_dir;
+  }
 
  private:
+  std::string ComputeEnvironmentHash(const std::vector<std::string>& env);
+  void DumpEnvIfNeed(
+      const std::string& env_hash,
+      const std::vector<std::string>& sorted_env);
+
   DllInjector* dll_injector_;
   ExecutingEngine* executing_engine_;
   ExecutorFactory* executor_factory_;
@@ -65,6 +73,7 @@ class ExecutorImpl : public ExecutorIf {
   // PushStdOutput can be called from alien thread because of
   // Child-Parent std streams sharing. So we use mutex to protect it.
   std::mutex std_handles_lock_;
+  boost::filesystem::path dump_env_dir_;
 };
 
 #endif  // STEXECUTOR_EXECUTOR_IMPL_H_
