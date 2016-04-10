@@ -147,7 +147,11 @@ std::string ExecutorImpl::ComputeEnvironmentHash(
   std::sort(sorted_env.begin(), sorted_env.end());
   CryptoPP::Weak::MD5 hasher;
   for (const std::string& str : sorted_env) {
-    if (!str.empty()) {
+    // Windows has some "special" env variables like
+    // "=ExitCode", "=C:", etc., that greatly vary, preventing caching.
+    // Hope programs will not use them and skip them. Return in case
+    // any problems.
+    if (!str.empty() && str[0] != '=') {
       hasher.Update(
           reinterpret_cast<const uint8_t*>(str.data()), str.length());
     }
@@ -172,7 +176,7 @@ void ExecutorImpl::DumpEnvIfNeed(
     return;
   }
   for (const std::string& str : sorted_env) {
-    if (!str.empty()) {
+    if (!str.empty() && str[0] != '=') {
       filebuf.sputn(str.data(), str.length());
       filebuf.sputc('\n');
     }
