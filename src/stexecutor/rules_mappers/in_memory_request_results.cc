@@ -44,10 +44,9 @@ bool FileSetMatchesBuildState(
 
 
 void InMemoryRequestResults::AddRule(
-    std::vector<FileInfo> input_files,
+    const std::vector<FileInfo>& input_files,
     std::unique_ptr<CachedExecutionResponse> response) {
-  std::sort(input_files.begin(), input_files.end());
-  FileSet file_set(std::move(input_files));
+  FileSet file_set(input_files);
   responses_[file_set] = std::move(response);
 }
 

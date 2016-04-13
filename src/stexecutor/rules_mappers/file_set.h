@@ -18,7 +18,7 @@ namespace rules_mappers {
 // path to these files and hashes of content of each of them.
 class FileSet {
  public:
-  explicit FileSet(const std::vector<FileInfo>& sorted_input_files);
+  explicit FileSet(const std::vector<FileInfo>& file_infos);
 
   size_t hash_value() const {
     return hash_value_;

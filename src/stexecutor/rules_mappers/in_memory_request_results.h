@@ -24,7 +24,7 @@ struct CachedExecutionResponse;
 class InMemoryRequestResults {
  public:
   void AddRule(
-      std::vector<FileInfo> input_files,
+      const std::vector<FileInfo>& input_files,
       std::unique_ptr<CachedExecutionResponse> response);
   const CachedExecutionResponse* FindCachedResults(
       const BuildDirectoryState& build_dir_state,

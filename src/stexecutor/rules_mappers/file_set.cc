@@ -9,9 +9,10 @@
 
 namespace rules_mappers {
 
-FileSet::FileSet(const std::vector<FileInfo>& sorted_input_files)
+FileSet::FileSet(const std::vector<FileInfo>& file_infos)
     : hash_value_(0),
-      sorted_file_infos_(sorted_input_files) {
+      sorted_file_infos_(file_infos) {
+  std::sort(sorted_file_infos_.begin(), sorted_file_infos_.end());
   std::hash<std::string> string_hasher;
   for (const FileInfo& file_info : sorted_file_infos_) {
     hash_value_ ^= string_hasher(file_info.rel_file_path.generic_string());
