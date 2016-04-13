@@ -11,8 +11,8 @@
 
 #include "boost/serialization/unique_ptr.hpp"
 #include "boost/serialization/unordered_map.hpp"
-#include "stexecutor/rules_mappers/file_info.h"
 #include "stexecutor/rules_mappers/file_set.h"
+#include "stexecutor/rules_mappers/request_results_base.h"
 #include "stexecutor/rules_mappers/rules_hashing.h"
 
 class BuildDirectoryState;
@@ -21,14 +21,14 @@ namespace rules_mappers {
 
 struct CachedExecutionResponse;
 
-class InMemoryRequestResults {
+class InMemoryRequestResults : public RequestResultsBase {
  public:
   void AddRule(
       const std::vector<FileInfo>& input_files,
-      std::unique_ptr<CachedExecutionResponse> response);
+      std::unique_ptr<CachedExecutionResponse> response) override;
   const CachedExecutionResponse* FindCachedResults(
       const BuildDirectoryState& build_dir_state,
-      std::vector<FileInfo>* input_files);
+      std::vector<FileInfo>* input_files) override;
 
  private:
   friend class boost::serialization::access;

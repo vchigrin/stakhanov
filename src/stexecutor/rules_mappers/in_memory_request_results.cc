@@ -9,7 +9,6 @@
 
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
-#include "stexecutor/build_directory_state.h"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/file_set.h"
 
@@ -20,28 +19,7 @@ namespace {
 log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
     L"InMemoryRequestResults");
 
-bool FileSetMatchesBuildState(
-    const FileSet& file_set,
-    const BuildDirectoryState& build_dir_state) {
-  const auto& file_infos = file_set.file_infos();
-  for (const FileInfo& file_info : file_infos) {
-    std::string actual_content_id = build_dir_state.GetFileContentId(
-        file_info.rel_file_path);
-    if (actual_content_id.empty()) {
-      LOG4CPLUS_INFO(
-          logger_,
-          "No content id for "
-              << file_info.rel_file_path.generic_string().c_str());
-      return false;
-    }
-    if (actual_content_id != file_info.storage_content_id)
-      return false;
-  }
-  return true;
-}
-
 }  // namespace
-
 
 void InMemoryRequestResults::AddRule(
     const std::vector<FileInfo>& input_files,

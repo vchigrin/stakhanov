@@ -34,6 +34,8 @@ add_executable(stexecutor
   rules_mappers/in_memory_request_results.h
   rules_mappers/in_memory_rules_mapper.cc
   rules_mappers/in_memory_rules_mapper.h
+  rules_mappers/request_results_base.cc
+  rules_mappers/request_results_base.h
   rules_mappers/rules_hashing.h
   rules_mappers/rules_mapper.h
   rules_mappers/rules_mapper_base.cc
