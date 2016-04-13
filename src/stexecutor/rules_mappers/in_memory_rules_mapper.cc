@@ -84,24 +84,6 @@ const CachedExecutionResponse* InMemoryRulesMapper::FindCachedResults(
   return it->second->FindCachedResults(build_dir_state, input_files);
 }
 
-
-// static
-HashValue InMemoryRulesMapper::ComputeProcessCreationHash(
-    const ProcessCreationRequest& process_creation_request) {
-  CryptoPP::Weak::MD5 hasher;
-  HashString(&hasher,
-      process_creation_request.exe_path().generic_string());
-  HashString(&hasher,
-      process_creation_request.startup_directory().generic_string());
-  for (const std::string& argument : process_creation_request.command_line()) {
-    HashString(&hasher, argument);
-  }
-  HashString(&hasher, process_creation_request.environment_hash());
-  HashValue request_hash;
-  hasher.Final(request_hash.data());
-  return request_hash;
-}
-
 void InMemoryRulesMapper::AddRule(
     const ProcessCreationRequest& process_creation_request,
     std::vector<FileInfo> input_files,
@@ -124,16 +106,11 @@ void InMemoryRulesMapper::AddRule(
   }
   results->AddRule(std::move(input_files), std::move(response));
   if (!dbg_dump_rules_dir_.empty()) {
-    DumpReuestResults(results, process_creation_request, request_hash);
+    DumpRequestResults(results, process_creation_request, request_hash);
   }
 }
 
-void InMemoryRulesMapper::SetDbgDumpRulesDir(
-    const boost::filesystem::path& dbg_dump_rules_dir) {
-  dbg_dump_rules_dir_ = dbg_dump_rules_dir;
-}
-
-void InMemoryRulesMapper::DumpReuestResults(
+void InMemoryRulesMapper::DumpRequestResults(
     InMemoryRequestResults* results,
     const ProcessCreationRequest& process_creation_request,
     const HashValue& hash_value) {

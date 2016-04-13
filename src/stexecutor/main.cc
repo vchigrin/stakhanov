@@ -138,7 +138,8 @@ int main(int argc, char* argv[]) {
       new rules_mappers::InMemoryRulesMapper());
   auto it = variables.find("dump_rules_dir");
   if (it != variables.end()) {
-    rules_mapper->SetDbgDumpRulesDir(it->second.as<boost::filesystem::path>());
+    rules_mapper->set_dbg_dump_rules_dir(
+        it->second.as<boost::filesystem::path>());
   }
   std::unique_ptr<BuildDirectoryState> build_dir_state(
       new BuildDirectoryState(build_dir_path));

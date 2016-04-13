@@ -36,6 +36,8 @@ add_executable(stexecutor
   rules_mappers/in_memory_rules_mapper.h
   rules_mappers/rules_hashing.h
   rules_mappers/rules_mapper.h
+  rules_mappers/rules_mapper_base.cc
+  rules_mappers/rules_mapper_base.h
 )
 
 target_link_libraries(stexecutor

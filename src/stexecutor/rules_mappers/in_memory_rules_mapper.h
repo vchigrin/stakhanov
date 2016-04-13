@@ -10,14 +10,14 @@
 
 #include "boost/filesystem/path.hpp"
 #include "boost/serialization/serialization.hpp"
-#include "stexecutor/rules_mappers/rules_mapper.h"
+#include "stexecutor/rules_mappers/rules_mapper_base.h"
 #include "stexecutor/rules_mappers/rules_hashing.h"
 
 namespace rules_mappers {
 
 class InMemoryRequestResults;
 
-class InMemoryRulesMapper : public RulesMapper {
+class InMemoryRulesMapper : public RulesMapperBase {
  public:
   InMemoryRulesMapper();
   ~InMemoryRulesMapper();
@@ -30,17 +30,17 @@ class InMemoryRulesMapper : public RulesMapper {
       const ProcessCreationRequest& process_creation_request,
       std::vector<FileInfo> input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
-  void SetDbgDumpRulesDir(
-      const boost::filesystem::path& dbg_dump_rules_dir);
+  void set_dbg_dump_rules_dir(
+      const boost::filesystem::path& dbg_dump_rules_dir) {
+    dbg_dump_rules_dir_ = dbg_dump_rules_dir;
+  }
 
  private:
-  void DumpReuestResults(
+  void DumpRequestResults(
       InMemoryRequestResults* results,
       const ProcessCreationRequest& process_creation_request,
       const HashValue& hash_value);
 
-  static HashValue ComputeProcessCreationHash(
-      const ProcessCreationRequest& process_creation_request);
   std::unordered_map<
       HashValue,
       std::unique_ptr<InMemoryRequestResults>,
