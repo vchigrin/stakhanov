@@ -10,29 +10,24 @@
 namespace rules_mappers {
 
 FileSet::FileSet(const std::vector<FileInfo>& sorted_input_files)
-    : hash_value_(0) {
-  sorted_rel_file_paths_.reserve(sorted_input_files.size());
-  std::transform(
-      sorted_input_files.begin(),
-      sorted_input_files.end(),
-      std::back_inserter(sorted_rel_file_paths_),
-      [](const FileInfo& file_info) { return file_info.rel_file_path; });
+    : hash_value_(0),
+      sorted_file_infos_(sorted_input_files) {
   std::hash<std::string> string_hasher;
-  for (const boost::filesystem::path& rel_file_path : sorted_rel_file_paths_) {
-    hash_value_ ^= string_hasher(rel_file_path.generic_string());
+  for (const FileInfo& file_info : sorted_file_infos_) {
+    hash_value_ ^= string_hasher(file_info.rel_file_path.generic_string());
+    hash_value_ ^= string_hasher(file_info.storage_content_id);
   }
 }
 
 bool FileSet::operator==(const FileSet& second) const {
   if (hash_value_ != second.hash_value_)
     return false;
-  if (sorted_rel_file_paths_.size() != second.sorted_rel_file_paths_.size())
+  if (sorted_file_infos_.size() != second.sorted_file_infos_.size())
     return false;
-  for (size_t i = 0; i < sorted_rel_file_paths_.size(); ++i) {
-    if (sorted_rel_file_paths_[i] != second.sorted_rel_file_paths_[i])
-      return false;
-  }
-  return true;
+  return std::equal(
+      sorted_file_infos_.begin(),
+      sorted_file_infos_.end(),
+      second.sorted_file_infos_.begin());
 }
 
 }  // namespace rules_mappers

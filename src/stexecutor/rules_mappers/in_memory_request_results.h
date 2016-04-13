@@ -37,12 +37,10 @@ class InMemoryRequestResults {
     ar & BOOST_SERIALIZATION_NVP(responses_);
   }
 
-  using FileSetHashToResponse = std::unordered_map<
-      HashValue,
+  std::unordered_map<
+      FileSet,
       std::unique_ptr<CachedExecutionResponse>,
-      HashValueHasher>;
-
-  std::unordered_map<FileSet, FileSetHashToResponse, FileSetHash> responses_;
+      FileSetHash> responses_;
 };
 
 }  // namespace rules_mappers

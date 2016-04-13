@@ -14,13 +14,11 @@
 
 namespace rules_mappers {
 
+// Represents unique set of files in build dir - that is
+// path to these files and hashes of content of each of them.
 class FileSet {
  public:
   explicit FileSet(const std::vector<FileInfo>& sorted_input_files);
-
-  const std::vector<boost::filesystem::path>& sorted_rel_file_paths() const {
-    return sorted_rel_file_paths_;
-  }
 
   size_t hash_value() const {
     return hash_value_;
@@ -28,14 +26,18 @@ class FileSet {
 
   bool operator==(const FileSet& second) const;
 
+  const std::vector<FileInfo> file_infos() const {
+    return sorted_file_infos_;
+  }
+
  private:
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive & ar, const unsigned int version) {  // NOLINT
-    ar & BOOST_SERIALIZATION_NVP(sorted_rel_file_paths_);
+    ar & BOOST_SERIALIZATION_NVP(sorted_file_infos_);
   }
 
-  std::vector<boost::filesystem::path> sorted_rel_file_paths_;
+  std::vector<FileInfo> sorted_file_infos_;
   size_t hash_value_;
 };
 

@@ -11,6 +11,8 @@
 
 namespace rules_mappers {
 
+// Represents unique state on one file in build dir.
+// That is, it relative path and hash of it content.
 struct FileInfo {
   FileInfo(const boost::filesystem::path& rel_file_path,
            const std::string& storage_content_id)
@@ -20,6 +22,15 @@ struct FileInfo {
   bool operator == (const FileInfo& second) const {
     return rel_file_path == second.rel_file_path &&
         storage_content_id == second.storage_content_id;
+  }
+
+  bool operator < (const FileInfo& second) const {
+    auto cmp_result = rel_file_path.compare(second.rel_file_path);
+    if (cmp_result == 0) {
+      // Path are equal - compare storage ids.
+      return storage_content_id < second.storage_content_id;
+    }
+    return cmp_result < 0;
   }
 
   boost::filesystem::path rel_file_path;

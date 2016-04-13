@@ -4,6 +4,7 @@
 
 #include "stexecutor/rules_mappers/in_memory_request_results.h"
 
+#include <algorithm>
 #include <string>
 
 #include "log4cplus/logger.h"
@@ -19,24 +20,23 @@ namespace {
 log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
     L"InMemoryRequestResults");
 
-bool ComputeHashForFileSet(
+bool FileSetMatchesBuildState(
     const FileSet& file_set,
-    const BuildDirectoryState& build_dir_state,
-    HashValue* result,
-    std::vector<FileInfo>* input_files) {
-  HashAlgorithm content_ids_hasher;
-  input_files->clear();
-  for (const auto& rel_path : file_set.sorted_rel_file_paths()) {
-    std::string content_id = build_dir_state.GetFileContentId(rel_path);
-    if (content_id.empty()) {
+    const BuildDirectoryState& build_dir_state) {
+  const auto& file_infos = file_set.file_infos();
+  for (const FileInfo& file_info : file_infos) {
+    std::string actual_content_id = build_dir_state.GetFileContentId(
+        file_info.rel_file_path);
+    if (actual_content_id.empty()) {
       LOG4CPLUS_INFO(
-          logger_, "No content id for " << rel_path.generic_string().c_str());
+          logger_,
+          "No content id for "
+              << file_info.rel_file_path.generic_string().c_str());
       return false;
     }
-    input_files->emplace_back(rel_path, content_id);
-    HashString(&content_ids_hasher, content_id);
+    if (actual_content_id != file_info.storage_content_id)
+      return false;
   }
-  content_ids_hasher.Final(result->data());
   return true;
 }
 
@@ -46,41 +46,22 @@ bool ComputeHashForFileSet(
 void InMemoryRequestResults::AddRule(
     std::vector<FileInfo> input_files,
     std::unique_ptr<CachedExecutionResponse> response) {
-  std::sort(
-      input_files.begin(),
-      input_files.end(),
-      [](const FileInfo& first, const FileInfo& second) {
-        return first.rel_file_path < second.rel_file_path;
-      });
-  HashAlgorithm content_ids_hasher;
-  for (const FileInfo& file_info : input_files) {
-    HashString(&content_ids_hasher, file_info.storage_content_id);
-  }
-  HashValue input_content_hash;
-  content_ids_hasher.Final(input_content_hash.data());
+  std::sort(input_files.begin(), input_files.end());
   FileSet file_set(std::move(input_files));
-  FileSetHashToResponse& file_set_hash_to_response = responses_[file_set];
-  file_set_hash_to_response[input_content_hash] = std::move(response);
+  responses_[file_set] = std::move(response);
 }
 
 const CachedExecutionResponse*
 InMemoryRequestResults::FindCachedResults(
     const BuildDirectoryState& build_dir_state,
     std::vector<FileInfo>* input_files) {
-  for (const auto& file_set_and_hashes : responses_) {
-    HashValue input_content_hash;
-    if (!ComputeHashForFileSet(
-        file_set_and_hashes.first,
-        build_dir_state,
-        &input_content_hash,
-        input_files)) {
-      continue;  // May be not all files present in current build dir state.
+  for (const auto& file_set_and_response : responses_) {
+    if (FileSetMatchesBuildState(
+        file_set_and_response.first,
+        build_dir_state)) {
+      *input_files = file_set_and_response.first.file_infos();
+      return file_set_and_response.second.get();
     }
-    const FileSetHashToResponse& file_set_hash_to_response =
-        file_set_and_hashes.second;
-    auto it = file_set_hash_to_response.find(input_content_hash);
-    if (it != file_set_hash_to_response.end())
-      return it->second.get();
   }
   input_files->clear();
   return nullptr;
