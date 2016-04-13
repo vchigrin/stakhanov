@@ -50,7 +50,6 @@ target_link_libraries(stexecutor
 )
 
 target_compile_definitions(stexecutor PRIVATE
-  _WINSOCKAPI_
   # To avoid warnings about MD5. They are fine since we use it not for
   # cryptographic targets.
   CRYPTOPP_ENABLE_NAMESPACE_WEAK=1

@@ -55,8 +55,4 @@ target_link_libraries(sthook
   ntdll.lib
 )
 
-target_compile_definitions(sthook PRIVATE
-  _WINSOCKAPI_
-)
-
 target_include_directories(sthook PUBLIC ${LOG4CPLUS_INCLUDE})

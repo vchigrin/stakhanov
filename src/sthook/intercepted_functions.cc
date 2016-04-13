@@ -4,6 +4,7 @@
 
 #include "sthook/intercepted_functions.h"
 
+#include <shellapi.h>
 #include <windows.h>
 
 #include <codecvt>

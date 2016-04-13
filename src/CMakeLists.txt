@@ -28,6 +28,11 @@ if(MSVC)
   link_directories(${CACHED_LIB})
 endif()
 
+if (WIN32)
+  # Avoid automatic inclusion of winsock.h due to conflicts with winsock2.h
+  add_definitions(-DWIN32_LEAN_AND_MEAN)
+endif()
+
 # TODO(vchigrin): Use ExternalProject_Add
 set(LOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME OFF CACHE BOOL "" FORCE)
 
