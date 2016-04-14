@@ -37,7 +37,7 @@ class RedisRequestResults : public RequestResultsBase {
       std::vector<FileInfo>* input_files) override;
 
  private:
-  FileSet LoadFileSet(const std::string& file_set_hash);
+  bool LoadFileSet(const std::string& file_set_hash, FileSet* file_set);
   std::shared_ptr<CachedExecutionResponse> LoadExecutionResponse(
       const std::string& key);
   void SaveFileSet(const std::string& key, const FileSet& file_set);

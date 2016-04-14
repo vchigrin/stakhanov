@@ -37,6 +37,7 @@ class FileSet {
   template<class Archive>
   void serialize(Archive & ar, const unsigned int version) {  // NOLINT
     ar & BOOST_SERIALIZATION_NVP(sorted_file_infos_);
+    ar & BOOST_SERIALIZATION_NVP(hash_value_);
   }
 
   std::vector<FileInfo> sorted_file_infos_;

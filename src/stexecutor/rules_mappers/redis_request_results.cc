@@ -93,7 +93,10 @@ RedisRequestResults::RedisRequestResults(
     std::vector<RedisValue> file_set_hashes = redis_val.toArray();
     file_sets_.reserve(file_set_hashes.size());
     for (const RedisValue& file_set_hash : file_set_hashes) {
-      file_sets_.push_back(LoadFileSet(file_set_hash.toString()));
+      FileSet file_set;
+      if (LoadFileSet(file_set_hash.toString(), &file_set)) {
+        file_sets_.push_back(std::move(file_set));
+      }
     }
   }
 }
@@ -140,19 +143,20 @@ RedisRequestResults::FindCachedResults(
   return nullptr;
 }
 
-FileSet RedisRequestResults::LoadFileSet(const std::string& file_set_hash) {
+bool RedisRequestResults::LoadFileSet(
+    const std::string& file_set_hash, FileSet* file_set) {
   RedisValue file_set_val = redis_client_->command(
       "GET", FileSetHashToKey(file_set_hash));
   if (!file_set_val.isOk()) {
     LOG4CPLUS_INFO(logger_, "No file set for hash " << file_set_hash.c_str());
-    return FileSet();
+    return false;
   }
-  FileSet result;
-  if (!LoadObject(file_set_val, &result)) {
+  if (!LoadObject(file_set_val, file_set)) {
     LOG4CPLUS_ERROR(
         logger_, "Corrupt file set for hash " << file_set_hash.c_str());
+    return false;
   }
-  return result;
+  return true;
 }
 
 std::shared_ptr<CachedExecutionResponse>
