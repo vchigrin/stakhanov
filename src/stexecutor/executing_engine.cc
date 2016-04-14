@@ -132,7 +132,10 @@ void ExecutingEngine::SaveCommandResults(
           command_info.exit_code,
           stdout_id,
           stderr_id));
-  if (!command_info.child_command_ids.empty())  {
+  if (!command_info.child_command_ids.empty() ||
+      // There may be CumulativeExecutionResponseBuilder event when
+      // child_command_ids is empty - when all childs are cache hits.
+      parent_command_id_to_results_.count(command_info.command_id) > 0) {
     CumulativeExecutionResponseBuilder* builder = GetCumulativeResponseBuilder(
         command_info.command_id);
     builder->SetParentExecutionResponse(
@@ -190,7 +193,7 @@ void ExecutingEngine::UpdateAllParentResponses(
     const std::vector<rules_mappers::FileInfo>& input_files,
     const rules_mappers::CachedExecutionResponse& execution_response) {
   int current_command_id = first_parent_command_id;
-  while (true) {
+  while (current_command_id != kRootCommandId) {
     CumulativeExecutionResponseBuilder* parent_builder =
         GetCumulativeResponseBuilder(current_command_id);
     parent_builder->AddChildResponse(
@@ -218,7 +221,8 @@ void ExecutingEngine::AssociatePIDWithCommandId(
   // Emulate "child-parent" relations between all processes in tree,
   // So top-level process will grab all input-output files.
   int cur_parent_id = parent_command_id;
-  while (true) {
+  // Avoid creating cumulative builder for root command - stlaunch.
+  while (cur_parent_id != kRootCommandId) {
     CumulativeExecutionResponseBuilder* parent_builder =
         GetCumulativeResponseBuilder(cur_parent_id);
     parent_builder->ChildProcessCreated(command_id);
@@ -262,6 +266,7 @@ ExecutingEngine::GetCumulativeResponseBuilder(int command_id) {
   auto it = parent_command_id_to_results_.find(command_id);
   if (it != parent_command_id_to_results_.end())
     return it->second.get();
+  LOG4CPLUS_ASSERT(logger_, command_id >= kFirstUserCommandId);
   std::unique_ptr<CumulativeExecutionResponseBuilder> result(
       new CumulativeExecutionResponseBuilder());
   auto* result_ptr = result.get();
