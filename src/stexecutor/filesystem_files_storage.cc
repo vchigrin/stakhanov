@@ -28,6 +28,35 @@ std::string StorageIdFromHasher(CryptoPP::Weak::MD5* hasher) {
   return base::BytesToHexString(digest);
 }
 
+bool LinkOrCopyFile(
+    const boost::filesystem::path& src_path,
+    const boost::filesystem::path& dst_path) {
+  boost::system::error_code remove_error, link_error;
+  // Delete old file, if any.
+  boost::filesystem::remove(dst_path, remove_error);
+  boost::filesystem::create_hard_link(
+      src_path, dst_path,
+      link_error);
+  if (link_error) {
+    // May be e.g. ERROR_TOO_MANY_LINKS on some "popular" files,
+    // fall back to copying.
+    LOG4CPLUS_WARN(
+        logger_, "Failed hard_link file, fall back to copy " << src_path.c_str()
+            << " Error code " << link_error);
+    boost::filesystem::copy_file(
+        src_path, dst_path,
+        boost::filesystem::copy_option::overwrite_if_exists,
+        link_error);
+    if (link_error) {
+      LOG4CPLUS_WARN(
+          logger_, "Both copy and hard_link failed for " << src_path.c_str()
+              << " Error code " << link_error);
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 FilesystemFilesStorage::FilesystemFilesStorage(
@@ -73,18 +102,8 @@ std::string FilesystemFilesStorage::StoreFile(
   if (dest_path.empty())
     return std::string();
 
-  // TODO(vchigrin): Consider usage of hard links.
-  boost::system::error_code error_code;
-  boost::filesystem::copy_file(
-      abs_file_path, dest_path,
-      boost::filesystem::copy_option::overwrite_if_exists,
-      error_code);
-  if (error_code) {
-    LOG4CPLUS_ERROR(
-        logger_, "Failed copy file " << abs_file_path.c_str()
-            << " Error code " << error_code);
+  if (!LinkOrCopyFile(abs_file_path, dest_path))
     return std::string();
-  }
   return file_id;
 }
 
@@ -98,21 +117,8 @@ bool FilesystemFilesStorage::GetFileFromStorage(
     LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << src_path.c_str());
     return false;
   }
-  // TODO(vchigrin): Consider usage of hard links.
-  boost::system::error_code error_code;
   boost::filesystem::create_directories(dest_path.parent_path());
-  boost::filesystem::copy_file(
-      src_path,
-      dest_path,
-      boost::filesystem::copy_option::overwrite_if_exists,
-      error_code);
-  if (error_code) {
-    LOG4CPLUS_ERROR(
-        logger_, "Failed copy file " << src_path.c_str()
-              << " Error code " << error_code);
-    return false;
-  }
-  return true;
+  return LinkOrCopyFile(src_path, dest_path);
 }
 
 std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
