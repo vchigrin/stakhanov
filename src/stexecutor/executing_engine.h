@@ -61,6 +61,11 @@ class ExecutingEngine {
  private:
   std::mutex instance_lock_;
 
+  void UpdateAllParentResponsesForCompletedChild(
+      int child_command_id,
+      const std::vector<rules_mappers::FileInfo>& input_files,
+      const rules_mappers::CachedExecutionResponse& execution_response);
+
   void UpdateAllParentResponses(
       int first_parent_command_id,
       int child_command_id,

@@ -46,7 +46,8 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
             process_creation_request, *build_dir_state_, &input_files);
   if (!execution_response) {
     LOG4CPLUS_INFO(logger_,
-         "No cached response for " << process_creation_request);
+         "No cached response for " << process_creation_request <<
+         " Assigned id " << command_id);
     running_commands_.insert(
         std::make_pair(
             command_id,
@@ -55,7 +56,8 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
     return ProcessCreationResponse::BuildCacheMissResponse(command_id);
   }
   LOG4CPLUS_INFO(logger_,
-       "Using cached response for " << process_creation_request);
+       "Using cached response for " << process_creation_request <<
+       " Assigned id " << command_id);
   for (const rules_mappers::FileInfo& file_info :
       execution_response->output_files) {
     build_dir_state_->TakeFileFromStorage(
@@ -79,6 +81,8 @@ void ExecutingEngine::SaveCommandResults(
     const ExecutedCommandInfo& command_info) {
   std::lock_guard<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_ASSERT(logger_, command_info.command_id >= kFirstUserCommandId);
+  LOG4CPLUS_INFO(
+      logger_, "Saving command results for " << command_info.command_id);
   auto it = running_commands_.find(command_info.command_id);
   if (it == running_commands_.end()) {
     LOG4CPLUS_ERROR(
@@ -142,17 +146,16 @@ void ExecutingEngine::SaveCommandResults(
           builder->BuildAllInputFiles(),
           builder->BuildExecutionResponse());
       parent_command_id_to_results_.erase(command_info.command_id);
-    }
-  } else {
-    auto it_parent_id = child_command_id_to_parent_.find(
-        command_info.command_id);
-    if (it_parent_id != child_command_id_to_parent_.end()) {
-      UpdateAllParentResponses(
-          it_parent_id->second.command_id,
+      UpdateAllParentResponsesForCompletedChild(
           command_info.command_id,
           input_files,
           *execution_response);
     }
+  } else {
+    UpdateAllParentResponsesForCompletedChild(
+        command_info.command_id,
+        input_files,
+        *execution_response);
     LOG4CPLUS_INFO(logger_,
         "Saving command " << *request
         << " it has "
@@ -164,6 +167,21 @@ void ExecutingEngine::SaveCommandResults(
         std::move(execution_response));
   }
   running_commands_.erase(it);
+}
+
+void ExecutingEngine::UpdateAllParentResponsesForCompletedChild(
+    int child_command_id,
+    const std::vector<rules_mappers::FileInfo>& input_files,
+    const rules_mappers::CachedExecutionResponse& execution_response) {
+  auto it_parent_id = child_command_id_to_parent_.find(child_command_id);
+  if (it_parent_id != child_command_id_to_parent_.end()) {
+    UpdateAllParentResponses(
+        it_parent_id->second.command_id,
+        child_command_id,
+        input_files,
+        execution_response);
+    child_command_id_to_parent_.erase(it_parent_id);
+  }
 }
 
 void ExecutingEngine::UpdateAllParentResponses(
