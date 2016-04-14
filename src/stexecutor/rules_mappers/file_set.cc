@@ -20,6 +20,9 @@ FileSet::FileSet(const std::vector<FileInfo>& file_infos)
   }
 }
 
+FileSet::FileSet()
+    : hash_value_(0) { }
+
 bool FileSet::operator==(const FileSet& second) const {
   if (hash_value_ != second.hash_value_)
     return false;

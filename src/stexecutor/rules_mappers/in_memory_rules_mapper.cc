@@ -14,46 +14,6 @@
 #include "stexecutor/process_creation_request.h"
 #include "boost/archive/xml_oarchive.hpp"
 #include "boost/filesystem/fstream.hpp"
-#include "boost/serialization/split_free.hpp"
-
-namespace boost {
-namespace serialization {
-
-template<typename Archive>
-void save(
-    Archive& ar,  // NOLINT
-    const boost::filesystem::path& path,
-    const unsigned int) {
-  ar & boost::serialization::make_nvp("path", path.generic_string());
-}
-
-template<typename Archive>
-void save(
-    Archive& ar,  // NOLINT
-    const rules_mappers::HashValue& value,
-    const unsigned int) {
-  std::wstringstream strm;
-  strm << value;
-  ar & boost::serialization::make_nvp("hash", strm.str());
-}
-
-template<typename Archive>
-void save(
-    Archive& ar,  // NOLINT
-    const rules_mappers::FileInfo& value,
-    const unsigned int) {
-  ar & boost::serialization::make_nvp(
-      "rel_file_path", value.rel_file_path);
-  ar & boost::serialization::make_nvp(
-      "storage_content_id", value.storage_content_id);
-}
-
-}  // namespace serialization
-}  // namespace boost
-
-BOOST_SERIALIZATION_SPLIT_FREE(boost::filesystem::path)
-BOOST_SERIALIZATION_SPLIT_FREE(rules_mappers::HashValue)
-BOOST_SERIALIZATION_SPLIT_FREE(rules_mappers::FileInfo)
 
 namespace {
 

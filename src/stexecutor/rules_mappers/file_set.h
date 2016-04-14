@@ -20,6 +20,8 @@ class FileSet {
  public:
   explicit FileSet(const std::vector<FileInfo>& file_infos);
 
+  FileSet();
+
   size_t hash_value() const {
     return hash_value_;
   }

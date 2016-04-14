@@ -25,6 +25,9 @@ struct CachedExecutionResponse {
         stdout_content_id(stdout_content_id),
         stderr_content_id(stderr_content_id) {}
 
+  CachedExecutionResponse()
+      : exit_code(0) {}
+
   std::vector<FileInfo> output_files;
   int exit_code;
   std::string stdout_content_id;
@@ -33,6 +36,8 @@ struct CachedExecutionResponse {
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive & ar, const unsigned int version) {  // NOLINT
+    // NOTE: Here serialization used not only for debugging but also
+    // for saving data to Redis.
     ar & BOOST_SERIALIZATION_NVP(output_files);
     ar & BOOST_SERIALIZATION_NVP(exit_code);
     ar & BOOST_SERIALIZATION_NVP(stdout_content_id);

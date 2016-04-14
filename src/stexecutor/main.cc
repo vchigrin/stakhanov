@@ -22,7 +22,9 @@
 #include "stexecutor/executor_factory.h"
 #include "stexecutor/filesystem_files_storage.h"
 #include "stexecutor/rules_mappers/in_memory_rules_mapper.h"
+#include "stexecutor/rules_mappers/redis_rules_mapper.h"
 #include "sthook/sthook_communication.h"
+#include "third_party/redisclient/src/redisclient/redissyncclient.h"
 #include "thrift/server/TThreadedServer.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TServerSocket.h"
@@ -72,6 +74,75 @@ BOOL WINAPI ConsoleHandler(DWORD ctrl_type) {
   return FALSE;
 }
 
+enum class RulesMapperType {
+  InMemory,
+  Redis
+};
+
+std::istream& operator >> (
+    std::istream &in, RulesMapperType& rules_mapper_type) {  // NOLINT
+  std::string token;
+  in >> token;
+  if (token == "in-memory")
+    rules_mapper_type = RulesMapperType::InMemory;
+  else if (token == "redis")
+    rules_mapper_type = RulesMapperType::Redis;
+  else
+    throw boost::program_options::validation_error(
+        boost::program_options::validation_error::invalid_option_value,
+        "Invalid Rules mapper type");
+  return in;
+}
+
+boost::asio::io_service& GetIOService() {
+  static std::unique_ptr<boost::asio::io_service> result;
+  if (!result) {
+    result.reset(new boost::asio::io_service());
+  }
+  return *result;
+}
+
+void OnRedisError(const std::string& error_msg) {
+  LOG4CPLUS_ERROR(logger_, "REDIS ERROR " << error_msg.c_str());
+}
+
+std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
+    const boost::program_options::variables_map& option_variables) {
+  RulesMapperType rules_mapper_type =
+      option_variables["rules_mapper_type"].as<RulesMapperType>();
+  if (rules_mapper_type == RulesMapperType::InMemory) {
+    std::unique_ptr<rules_mappers::InMemoryRulesMapper> rules_mapper(
+        new rules_mappers::InMemoryRulesMapper());
+    auto it = option_variables.find("dump_rules_dir");
+    if (it != option_variables.end()) {
+      rules_mapper->set_dbg_dump_rules_dir(
+          it->second.as<boost::filesystem::path>());
+    }
+    return rules_mapper;
+  } else if (rules_mapper_type == RulesMapperType::Redis) {
+    std::unique_ptr<RedisSyncClient> redis_client(
+        new RedisSyncClient(GetIOService()));
+
+    std::string redis_ip = option_variables["redis_ip"].as<std::string>();
+    int redis_port = option_variables["redis_port"].as<int>();
+    boost::asio::ip::tcp::endpoint endpoint(
+        boost::asio::ip::address::from_string(redis_ip), redis_port);
+    std::string errmsg;
+    if (!redis_client->connect(endpoint, errmsg)) {
+      std::cerr
+          << "Failed connect to the Redis server " << errmsg << std::endl;
+      return nullptr;
+    }
+    redis_client->installErrorHandler(OnRedisError);
+    std::unique_ptr<rules_mappers::RedisRulesMapper> rules_mapper(
+        new rules_mappers::RedisRulesMapper(std::move(redis_client)));
+    return rules_mapper;
+  } else {
+    LOG4CPLUS_ASSERT(logger_, false);
+    return nullptr;
+  }
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -79,9 +150,8 @@ int main(int argc, char* argv[]) {
   using apache::thrift::transport::TBufferedTransportFactory;
   using apache::thrift::protocol::TBinaryProtocolFactory;
   base::InitLogging();
-
-  boost::program_options::options_description desc("Allowed options");
-  desc.add_options()
+  boost::program_options::options_description general_desc("General");
+  general_desc.add_options()
       ("help", "Print help message")
       ("cache_dir",
        boost::program_options::value<boost::filesystem::path>()->required(),
@@ -89,16 +159,42 @@ int main(int argc, char* argv[]) {
       ("build_dir",
        boost::program_options::value<boost::filesystem::path>()->required(),
         "Directory where build will run")
-      ("dump_rules_dir",
-       boost::program_options::value<boost::filesystem::path>(),
-        "Directory to dump observed rules for debugging purposes")
+      ("rules_mapper_type",
+       boost::program_options::value<RulesMapperType>()->required(),
+      "Rules mapper to use. Either \"in-memory\" or \"redis\"")
       ("dump_env_dir",
        boost::program_options::value<boost::filesystem::path>(),
         "Directory to dump env blocks for debugging purposes");
+
+  boost::program_options::options_description in_memory_desc(
+      "InMemory rules mapper options");
+  in_memory_desc.add_options()
+      ("dump_rules_dir",
+       boost::program_options::value<boost::filesystem::path>(),
+        "Directory to dump observed rules for debugging purposes");
+
+  boost::program_options::options_description redis_desc(
+      "Redis rules mapper options");
+  redis_desc.add_options()
+      ("redis_ip",
+       boost::program_options::value<std::string>()->default_value(
+           "127.0.0.1"),
+       "IP of the Redis server")
+      ("redis_port",
+       boost::program_options::value<int>()->default_value(6379),
+       "Port of the Redis server");
+  boost::program_options::options_description desc;
+  desc.add(general_desc).add(in_memory_desc).add(redis_desc);
+
   boost::program_options::variables_map variables;
-  boost::program_options::store(
-      boost::program_options::parse_command_line(argc, argv, desc),
-      variables);
+  try {
+    boost::program_options::store(
+        boost::program_options::parse_command_line(argc, argv, desc),
+        variables);
+  } catch (const std::exception& ex) {
+    std::cerr << ex.what() << std::endl;
+    return 1;
+  }
   if (variables.count("help")) {
     std::cout << desc;
     return 0;
@@ -134,13 +230,10 @@ int main(int argc, char* argv[]) {
       load_library_addr64);
   std::unique_ptr<FilesStorage> file_storage(
       new FilesystemFilesStorage(cache_dir_path));
-  std::unique_ptr<rules_mappers::InMemoryRulesMapper> rules_mapper(
-      new rules_mappers::InMemoryRulesMapper());
-  auto it = variables.find("dump_rules_dir");
-  if (it != variables.end()) {
-    rules_mapper->set_dbg_dump_rules_dir(
-        it->second.as<boost::filesystem::path>());
-  }
+  std::unique_ptr<rules_mappers::RulesMapper> rules_mapper =
+      CreateRulesMapper(variables);
+  if (!rules_mapper)
+    return 1;
   std::unique_ptr<BuildDirectoryState> build_dir_state(
       new BuildDirectoryState(build_dir_path));
   std::unique_ptr<ExecutingEngine> executing_engine(new ExecutingEngine(
@@ -151,7 +244,7 @@ int main(int argc, char* argv[]) {
       boost::make_shared<ExecutorFactory>(
           std::move(dll_injector),
           executing_engine.get());
-  it = variables.find("dump_env_dir");
+  auto it = variables.find("dump_env_dir");
   if (it != variables.end()) {
     executor_factory->set_dump_env_dir(
         it->second.as<boost::filesystem::path>());

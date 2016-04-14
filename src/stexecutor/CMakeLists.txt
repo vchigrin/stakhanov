@@ -26,6 +26,8 @@ add_executable(stexecutor
   process_creation_request.h
   process_creation_response.cc
   process_creation_response.h
+  redis_key_prefixes.cc
+  redis_key_prefixes.h
   rules_mappers/cached_execution_response.h
   rules_mappers/file_info.h
   rules_mappers/file_set.cc
@@ -34,6 +36,10 @@ add_executable(stexecutor
   rules_mappers/in_memory_request_results.h
   rules_mappers/in_memory_rules_mapper.cc
   rules_mappers/in_memory_rules_mapper.h
+  rules_mappers/redis_request_results.cc
+  rules_mappers/redis_request_results.h
+  rules_mappers/redis_rules_mapper.cc
+  rules_mappers/redis_rules_mapper.h
   rules_mappers/request_results_base.cc
   rules_mappers/request_results_base.h
   rules_mappers/rules_hashing.h

@@ -8,6 +8,7 @@
 #include <string>
 
 #include "boost/filesystem.hpp"
+#include "boost/serialization/split_free.hpp"
 
 namespace rules_mappers {
 
@@ -18,6 +19,8 @@ struct FileInfo {
            const std::string& storage_content_id)
       : rel_file_path(rel_file_path),
         storage_content_id(storage_content_id) {}
+
+  FileInfo() {}
 
   bool operator == (const FileInfo& second) const {
     return rel_file_path == second.rel_file_path &&
@@ -31,6 +34,16 @@ struct FileInfo {
       return storage_content_id < second.storage_content_id;
     }
     return cmp_result < 0;
+  }
+
+  template<typename Archive>
+  void serialize(
+      Archive& ar,  // NOLINT
+      const unsigned int) {
+    ar & boost::serialization::make_nvp(
+        "rel_file_path", rel_file_path);
+    ar & boost::serialization::make_nvp(
+        "storage_content_id", storage_content_id);
   }
 
   boost::filesystem::path rel_file_path;
@@ -47,5 +60,30 @@ struct FileInfoHasher {
 };
 
 }  // namespace rules_mappers
+
+BOOST_SERIALIZATION_SPLIT_FREE(boost::filesystem::path)
+
+namespace boost {
+namespace serialization {
+
+template<typename Archive>
+void save(
+    Archive& ar,  // NOLINT
+    const boost::filesystem::path& path,
+    const unsigned int) {
+  ar << boost::serialization::make_nvp("path", path.generic_string());
+}
+
+template<typename Archive>
+void load(
+    Archive& ar, boost::filesystem::path& path,  // NOLINT
+    const unsigned int) {
+  std::string generic_path;
+  ar >> generic_path;
+  path = boost::filesystem::path(generic_path);
+}
+
+}  // namespace serialization
+}  // namespace boost
 
 #endif  // STEXECUTOR_RULES_MAPPERS_FILE_INFO_H_

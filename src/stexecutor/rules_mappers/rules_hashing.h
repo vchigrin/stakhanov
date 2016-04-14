@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <string>
+#include <sstream>
 
+#include "boost/serialization/split_free.hpp"
 #include "third_party/cryptopp/md5.h"
 
 namespace rules_mappers {
@@ -44,18 +46,24 @@ class HashValue {
   uint8_t value_[kSize];
 };
 
-inline std::wostream& operator << (
-    std::wostream& stream, const HashValue& hash_val) {
+template<typename CHAR_TYPE>
+inline std::basic_ostream<CHAR_TYPE>& operator << (
+    std::basic_ostream<CHAR_TYPE>& stream, const HashValue& hash_val) {
   auto flags = stream.flags();
   stream << std::hex;
   std::copy(
       hash_val.data(),
       hash_val.data() + HashValue::kSize,
-      std::ostream_iterator<uint8_t, wchar_t>(stream));
+      std::ostream_iterator<unsigned int, CHAR_TYPE>(stream));
   stream.flags(flags);
   return stream;
 }
 
+inline std::string HashValueToString(const HashValue& hash_val) {
+  std::stringstream result;
+  result << hash_val;
+  return result.str();
+}
 
 inline void HashString(HashAlgorithm* hasher, const std::string& str) {
   hasher->Update(reinterpret_cast<const uint8_t*>(str.c_str()), str.length());
@@ -72,5 +80,23 @@ struct HashValueHasher {
 };
 
 }  // namespace rules_mappers
+
+BOOST_SERIALIZATION_SPLIT_FREE(rules_mappers::HashValue)
+
+namespace boost {
+namespace serialization {
+
+template<typename Archive>
+void save(
+    Archive& ar,  // NOLINT
+    const rules_mappers::HashValue& value,
+    const unsigned int) {
+  std::wstringstream strm;
+  strm << value;
+  ar & boost::serialization::make_nvp("hash", strm.str());
+}
+
+}  // namespace serialization
+}  // namespace boost
 
 #endif  // STEXECUTOR_RULES_MAPPERS_RULES_HASHING_H_
