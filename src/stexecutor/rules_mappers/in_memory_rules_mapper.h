@@ -22,13 +22,13 @@ class InMemoryRulesMapper : public RulesMapperBase {
   InMemoryRulesMapper();
   ~InMemoryRulesMapper();
 
-  const CachedExecutionResponse* FindCachedResults(
+  std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
       const ProcessCreationRequest& process_creation_request,
       const BuildDirectoryState& build_dir_state,
       std::vector<FileInfo>* input_files) override;
   void AddRule(
       const ProcessCreationRequest& process_creation_request,
-      std::vector<FileInfo> input_files,
+      const std::vector<FileInfo>& input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
   void set_dbg_dump_rules_dir(
       const boost::filesystem::path& dbg_dump_rules_dir) {

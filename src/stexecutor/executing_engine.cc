@@ -41,9 +41,9 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
   std::lock_guard<std::mutex> instance_lock(instance_lock_);
   const int command_id = next_command_id_++;
   std::vector<rules_mappers::FileInfo> input_files;
-  const rules_mappers::CachedExecutionResponse* execution_response =
-      rules_mapper_->FindCachedResults(
-          process_creation_request, *build_dir_state_, &input_files);
+  std::shared_ptr<const rules_mappers::CachedExecutionResponse>
+       execution_response = rules_mapper_->FindCachedResults(
+            process_creation_request, *build_dir_state_, &input_files);
   if (!execution_response) {
     LOG4CPLUS_INFO(logger_,
          "No cached response for " << process_creation_request);

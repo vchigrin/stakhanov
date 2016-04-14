@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "boost/serialization/unique_ptr.hpp"
+#include "boost/serialization/shared_ptr.hpp"
 #include "boost/serialization/unordered_map.hpp"
 #include "stexecutor/rules_mappers/file_set.h"
 #include "stexecutor/rules_mappers/request_results_base.h"
@@ -26,7 +26,7 @@ class InMemoryRequestResults : public RequestResultsBase {
   void AddRule(
       const std::vector<FileInfo>& input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
-  const CachedExecutionResponse* FindCachedResults(
+  std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
       const BuildDirectoryState& build_dir_state,
       std::vector<FileInfo>* input_files) override;
 
@@ -39,7 +39,7 @@ class InMemoryRequestResults : public RequestResultsBase {
 
   std::unordered_map<
       FileSet,
-      std::unique_ptr<CachedExecutionResponse>,
+      std::shared_ptr<CachedExecutionResponse>,
       FileSetHash> responses_;
 };
 

@@ -69,7 +69,8 @@ InMemoryRulesMapper::InMemoryRulesMapper() {
 InMemoryRulesMapper::~InMemoryRulesMapper() {
 }
 
-const CachedExecutionResponse* InMemoryRulesMapper::FindCachedResults(
+std::shared_ptr<const CachedExecutionResponse>
+InMemoryRulesMapper::FindCachedResults(
     const ProcessCreationRequest& process_creation_request,
     const BuildDirectoryState& build_dir_state,
     std::vector<FileInfo>* input_files) {
@@ -86,7 +87,7 @@ const CachedExecutionResponse* InMemoryRulesMapper::FindCachedResults(
 
 void InMemoryRulesMapper::AddRule(
     const ProcessCreationRequest& process_creation_request,
-    std::vector<FileInfo> input_files,
+    const std::vector<FileInfo>& input_files,
     std::unique_ptr<CachedExecutionResponse> response) {
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
@@ -104,7 +105,7 @@ void InMemoryRulesMapper::AddRule(
     results = new_results.get();
     rules_.insert(std::make_pair(request_hash, std::move(new_results)));
   }
-  results->AddRule(std::move(input_files), std::move(response));
+  results->AddRule(input_files, std::move(response));
   if (!dbg_dump_rules_dir_.empty()) {
     DumpRequestResults(results, process_creation_request, request_hash);
   }

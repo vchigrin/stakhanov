@@ -28,7 +28,7 @@ void InMemoryRequestResults::AddRule(
   responses_[file_set] = std::move(response);
 }
 
-const CachedExecutionResponse*
+std::shared_ptr<const CachedExecutionResponse>
 InMemoryRequestResults::FindCachedResults(
     const BuildDirectoryState& build_dir_state,
     std::vector<FileInfo>* input_files) {
@@ -37,7 +37,7 @@ InMemoryRequestResults::FindCachedResults(
         file_set_and_response.first,
         build_dir_state)) {
       *input_files = file_set_and_response.first.file_infos();
-      return file_set_and_response.second.get();
+      return file_set_and_response.second;
     }
   }
   input_files->clear();
