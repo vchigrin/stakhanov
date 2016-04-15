@@ -725,6 +725,10 @@ void AfterCloseHandle(BOOL result, HANDLE handle) {
 }
 
 void BeforeExitProcess(UINT exit_code) {
+  {
+    std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+    GetExecutor()->OnBeforeExitProcess();
+  }
   // Must disable all hooks, since during ExitProcess there may be
   // CloseHandle() calls when some modules already unloaded.
   // May cause strange crashes of python interpreter.

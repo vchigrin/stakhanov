@@ -64,33 +64,6 @@ FilesystemFilesStorage::FilesystemFilesStorage(
     : storage_dir_(storage_dir) {
 }
 
-boost::filesystem::path FilesystemFilesStorage::PreparePlace(
-    const std::string& storage_id) {
-  std::string top_dir_name = storage_id.substr(0, kTopDirCharacters);
-  std::string object_name = storage_id.substr(kTopDirCharacters);
-  boost::filesystem::path dest_path = storage_dir_ / top_dir_name;
-  if (!boost::filesystem::exists(dest_path)) {
-    if (!boost::filesystem::create_directory(dest_path)) {
-      LOG4CPLUS_ERROR(
-          logger_, "Failed create directory " << dest_path.c_str());
-      return boost::filesystem::path();
-    }
-  }
-  dest_path /= object_name;
-  return dest_path;
-}
-
-boost::filesystem::path FilesystemFilesStorage::FilePathFromId(
-    const std::string& storage_id) {
-  if (storage_id.length() <= kTopDirCharacters) {
-    LOG4CPLUS_ERROR(logger_, "Invalid storage id " << storage_id.c_str());
-    return boost::filesystem::path();
-  }
-  std::string top_dir_name = storage_id.substr(0, kTopDirCharacters);
-  std::string object_name = storage_id.substr(kTopDirCharacters);
-  return storage_dir_ / top_dir_name / object_name;
-}
-
 std::string FilesystemFilesStorage::StoreFile(
     const boost::filesystem::path& abs_file_path) {
   std::string file_id = GetFileHash(abs_file_path);
@@ -98,6 +71,8 @@ std::string FilesystemFilesStorage::StoreFile(
                         << " file_id " << file_id.c_str());
   if (file_id.empty())
     return file_id;
+
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   boost::filesystem::path dest_path = PreparePlace(file_id);
   if (dest_path.empty())
     return std::string();
@@ -110,6 +85,7 @@ std::string FilesystemFilesStorage::StoreFile(
 bool FilesystemFilesStorage::GetFileFromStorage(
     const std::string& storage_id,
     const boost::filesystem::path& dest_path) {
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   LOG4CPLUS_DEBUG(logger_, "Retrieving file to " << dest_path.string().c_str()
                         << " file_id " << storage_id.c_str());
   boost::filesystem::path src_path = FilePathFromId(storage_id);
@@ -128,6 +104,8 @@ std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
         reinterpret_cast<const uint8_t*>(data.data()), data.length());
   }
   std::string storage_id = StorageIdFromHasher(&hasher);
+
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   boost::filesystem::path dest_path = PreparePlace(storage_id);
   if (dest_path.empty())
     return std::string();
@@ -145,6 +123,7 @@ std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
 std::string FilesystemFilesStorage::RetrieveContent(
     const std::string& storage_id) {
   boost::filesystem::path file_path = FilePathFromId(storage_id);
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   if (!boost::filesystem::exists(file_path)) {
     LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << file_path.c_str());
     return std::string();
@@ -198,4 +177,31 @@ std::string FilesystemFilesStorage::GetFileHash(
     return std::string();
   }
   return StorageIdFromHasher(&hasher);
+}
+
+boost::filesystem::path FilesystemFilesStorage::PreparePlace(
+    const std::string& storage_id) {
+  std::string top_dir_name = storage_id.substr(0, kTopDirCharacters);
+  std::string object_name = storage_id.substr(kTopDirCharacters);
+  boost::filesystem::path dest_path = storage_dir_ / top_dir_name;
+  if (!boost::filesystem::exists(dest_path)) {
+    if (!boost::filesystem::create_directory(dest_path)) {
+      LOG4CPLUS_ERROR(
+          logger_, "Failed create directory " << dest_path.c_str());
+      return boost::filesystem::path();
+    }
+  }
+  dest_path /= object_name;
+  return dest_path;
+}
+
+boost::filesystem::path FilesystemFilesStorage::FilePathFromId(
+    const std::string& storage_id) {
+  if (storage_id.length() <= kTopDirCharacters) {
+    LOG4CPLUS_ERROR(logger_, "Invalid storage id " << storage_id.c_str());
+    return boost::filesystem::path();
+  }
+  std::string top_dir_name = storage_id.substr(0, kTopDirCharacters);
+  std::string object_name = storage_id.substr(kTopDirCharacters);
+  return storage_dir_ / top_dir_name / object_name;
 }

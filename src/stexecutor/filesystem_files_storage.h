@@ -5,6 +5,7 @@
 #ifndef STEXECUTOR_FILESYSTEM_FILES_STORAGE_H_
 #define STEXECUTOR_FILESYSTEM_FILES_STORAGE_H_
 
+#include <mutex>
 #include <string>
 
 #include "stexecutor/files_storage.h"
@@ -21,6 +22,7 @@ class FilesystemFilesStorage : public FilesStorage {
   std::string RetrieveContent(const std::string& storage_id) override;
 
  private:
+  std::mutex instance_lock_;
   std::string GetFileHash(const boost::filesystem::path& file_path);
   boost::filesystem::path PreparePlace(const std::string& storage_id);
   boost::filesystem::path FilePathFromId(const std::string& storage_id);

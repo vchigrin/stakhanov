@@ -58,6 +58,14 @@ class ExecutingEngine {
       int* command_id,
       std::vector<int>* command_ids_should_append_std_streams);
 
+  FilesStorage* files_storage() const {
+    return files_storage_.get();
+  }
+
+  BuildDirectoryState* build_dir_state() const {
+    return build_dir_state_.get();
+  }
+
  private:
   std::mutex instance_lock_;
 

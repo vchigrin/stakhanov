@@ -23,7 +23,10 @@ class BuildDirectoryState {
       const boost::filesystem::path& abs_path) const;
 
  private:
-  boost::filesystem::path build_dir_path_;
+  // In case of appearing any non-const memvers add locks.
+  // Methods of this class are called from ExecutorImpl threads, so it must
+  // be thread-safe.
+  const boost::filesystem::path build_dir_path_;
 };
 
 #endif  // STEXECUTOR_BUILD_DIRECTORY_STATE_H_

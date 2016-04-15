@@ -9,6 +9,8 @@
 
 #include "boost/filesystem.hpp"
 
+// NOTE: Methods of these classes may be called from ExecutorImpl threads,
+// so these classes must be thread-safe.
 class FilesStorage {
  public:
   // Empty string is invalid id. Used to indicate errors.

@@ -9,6 +9,8 @@
 #include "base/string_utils.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
+#include "stexecutor/build_directory_state.h"
+#include "stexecutor/files_storage.h"
 #include "stexecutor/dll_injector.h"
 #include "stexecutor/executing_engine.h"
 #include "stexecutor/executor_factory.h"
@@ -55,9 +57,9 @@ bool ExecutorImpl::HookedCreateFile(
     return true;
   }
   if (for_writing)
-    command_info_.output_files.insert(norm_path);
+    output_files_.insert(norm_path);
   else
-    command_info_.input_files.insert(norm_path);
+    input_files_.insert(norm_path);
   return true;
 }
 
@@ -66,16 +68,16 @@ void ExecutorImpl::HookedRenameFile(
     const std::string& new_name_str) {
   boost::filesystem::path norm_old_path = NormalizePath(old_name_str);
   boost::filesystem::path norm_new_path = NormalizePath(new_name_str);
-  auto it_output = command_info_.output_files.find(norm_old_path);
-  if (it_output != command_info_.output_files.end()) {
+  auto it_output = output_files_.find(norm_old_path);
+  if (it_output != output_files_.end()) {
     // One of existing outputs renamed.
-    command_info_.output_files.erase(it_output);
+    output_files_.erase(it_output);
   } else {
     // This is not our output - add both "input" andn "output" to
     // describe rename.
-    command_info_.input_files.insert(norm_old_path);
+    input_files_.insert(norm_old_path);
   }
-  command_info_.output_files.insert(norm_new_path);
+  output_files_.insert(norm_new_path);
 }
 
 void ExecutorImpl::Initialize(
@@ -118,7 +120,52 @@ void ExecutorImpl::OnSuspendedProcessCreated(
 void ExecutorImpl::OnFileDeleted(const std::string& abs_path) {
   boost::filesystem::path norm_path = NormalizePath(abs_path);
   // Need to avoid attempts to hash temp. files.
-  command_info_.output_files.erase(norm_path);
+  output_files_.erase(norm_path);
+}
+
+void ExecutorImpl::OnBeforeExitProcess() {
+  // We must perform hashing of all files synchronously here.
+  // After we return our peer process will exit and other processes
+  // may change these files.
+  FillFileInfos();
+}
+
+void ExecutorImpl::FillFileInfos() {
+  BuildDirectoryState* build_dir_state = executing_engine_->build_dir_state();
+  FilesStorage* files_storage = executing_engine_->files_storage();
+  for (const boost::filesystem::path& output_path : output_files_) {
+    boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
+        output_path);
+    if (rel_path.empty()) {
+      LOG4CPLUS_INFO(
+          logger_, "Output file is not storage file " << output_path);
+      continue;
+    }
+    std::string storage_id = files_storage->StoreFile(output_path);
+    if (storage_id.empty()) {
+      LOG4CPLUS_ERROR(
+          logger_,
+          "Failed save file to storage, skip command results caching ");
+      return;
+    }
+    command_info_.output_files.push_back(
+        rules_mappers::FileInfo(rel_path, storage_id));
+  }
+  for (const boost::filesystem::path& input_path : input_files_) {
+    boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
+        input_path);
+    if (rel_path.empty()) {
+      LOG4CPLUS_DEBUG(logger_, "Input file is not storage file " << input_path);
+      continue;
+    }
+    std::string content_id = build_dir_state->GetFileContentId(rel_path);
+    if (content_id.empty()) {
+      LOG4CPLUS_ERROR(logger_, "Failed hash input file " << input_path);
+      continue;
+    }
+    command_info_.input_files.push_back(
+        rules_mappers::FileInfo(rel_path, content_id));
+  }
 }
 
 void ExecutorImpl::OnBeforeProcessCreate(

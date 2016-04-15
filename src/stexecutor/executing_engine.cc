@@ -90,45 +90,14 @@ void ExecutingEngine::SaveCommandResults(
     return;
   }
   const ProcessCreationRequest* request = it->second.get();
-  std::vector<rules_mappers::FileInfo> output_files, input_files;
-  for (const boost::filesystem::path& output_path : command_info.output_files) {
-    boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
-        output_path);
-    if (rel_path.empty()) {
-      LOG4CPLUS_INFO(
-          logger_, "Output file is not storage file " << output_path);
-      continue;
-    }
-    std::string storage_id = files_storage_->StoreFile(output_path);
-    if (storage_id.empty()) {
-      LOG4CPLUS_ERROR(
-          logger_,
-          "Failed save file to storage, skip command results caching ");
-      return;
-    }
-    output_files.push_back(rules_mappers::FileInfo(rel_path, storage_id));
-  }
-  for (const boost::filesystem::path& input_path : command_info.input_files) {
-    boost::filesystem::path rel_path = build_dir_state_->MakeRelativePath(
-        input_path);
-    if (rel_path.empty()) {
-      LOG4CPLUS_DEBUG(logger_, "Input file is not storage file " << input_path);
-      continue;
-    }
-    std::string content_id = build_dir_state_->GetFileContentId(rel_path);
-    if (content_id.empty()) {
-      LOG4CPLUS_ERROR(logger_, "Failed hash input file " << input_path);
-      continue;
-    }
-    input_files.push_back(rules_mappers::FileInfo(rel_path, content_id));
-  }
+
   std::string stdout_id = files_storage_->StoreContent(
       command_info.result_stdout);
   std::string stderr_id = files_storage_->StoreContent(
       command_info.result_stderr);
   std::unique_ptr<rules_mappers::CachedExecutionResponse> execution_response(
       new rules_mappers::CachedExecutionResponse(
-          output_files,
+          command_info.output_files,
           command_info.exit_code,
           stdout_id,
           stderr_id));
@@ -140,7 +109,7 @@ void ExecutingEngine::SaveCommandResults(
         command_info.command_id);
     builder->SetParentExecutionResponse(
         *request,
-        input_files,
+        command_info.input_files,
         *execution_response);
     if (builder->IsComplete()) {
       LOG4CPLUS_INFO(logger_, "Parent command completed " << * request);
@@ -151,22 +120,22 @@ void ExecutingEngine::SaveCommandResults(
       parent_command_id_to_results_.erase(command_info.command_id);
       UpdateAllParentResponsesForCompletedChild(
           command_info.command_id,
-          input_files,
+          command_info.input_files,
           *execution_response);
     }
   } else {
     UpdateAllParentResponsesForCompletedChild(
         command_info.command_id,
-        input_files,
+        command_info.input_files,
         *execution_response);
     LOG4CPLUS_INFO(logger_,
         "Saving command " << *request
         << " it has "
-        << input_files.size() << " input files and "
-        << output_files.size() << " output files");
+        << command_info.input_files.size() << " input files and "
+        << command_info.output_files.size() << " output files");
     rules_mapper_->AddRule(
         *request,
-        input_files,
+        command_info.input_files,
         std::move(execution_response));
   }
   running_commands_.erase(it);

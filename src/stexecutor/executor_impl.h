@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "base/scoped_handle.h"
@@ -44,6 +45,7 @@ class ExecutorImpl : public ExecutorIf {
       const int32_t executor_command_id,
       const bool append_std_streams) override;
   void OnFileDeleted(const std::string& abs_path) override;
+  void OnBeforeExitProcess() override;
   void FillExitCode();
   const ExecutedCommandInfo& command_info() const {
     return command_info_;
@@ -56,6 +58,7 @@ class ExecutorImpl : public ExecutorIf {
   }
 
  private:
+  void FillFileInfos();
   std::string ComputeEnvironmentHash(const std::vector<std::string>& env);
   void DumpEnvIfNeed(
       const std::string& env_hash,
@@ -65,6 +68,8 @@ class ExecutorImpl : public ExecutorIf {
   ExecutingEngine* executing_engine_;
   ExecutorFactory* executor_factory_;
   ExecutedCommandInfo command_info_;
+  std::unordered_set<boost::filesystem::path, base::FilePathHash> input_files_;
+  std::unordered_set<boost::filesystem::path, base::FilePathHash> output_files_;
   base::ScopedHandle process_handle_;
   // List of Executors, related to parent processes, that share same
   // stdout and stderr handles.
