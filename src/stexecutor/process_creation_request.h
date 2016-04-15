@@ -21,6 +21,7 @@ class ProcessCreationRequest {
       const boost::filesystem::path& startup_directory,
       const std::vector<std::string>& command_line,
       const std::string& environment_hash);
+  ProcessCreationRequest() {}
 
   const boost::filesystem::path& exe_path() const {
     return exe_path_;

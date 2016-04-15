@@ -82,6 +82,8 @@ class ExecutingEngine {
       const std::vector<rules_mappers::FileInfo>& input_files,
       const rules_mappers::CachedExecutionResponse& execution_response);
 
+  void CompleteCumulativeResponse(CumulativeExecutionResponseBuilder* builder);
+
   CumulativeExecutionResponseBuilder* GetCumulativeResponseBuilder(
       int command_id);
   std::unique_ptr<FilesStorage> files_storage_;

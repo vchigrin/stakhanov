@@ -20,9 +20,13 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
 
 }  // namespace
 
-CumulativeExecutionResponseBuilder::CumulativeExecutionResponseBuilder()
+CumulativeExecutionResponseBuilder::CumulativeExecutionResponseBuilder(
+    int command_id,
+    CumulativeExecutionResponseBuilder* ancestor)
     : exit_code_(0),
-      parent_completed_(false) {
+      parent_completed_(false),
+      command_id_(command_id),
+      ancestor_(ancestor) {
 }
 
 void CumulativeExecutionResponseBuilder::SetParentExecutionResponse(
@@ -35,6 +39,7 @@ void CumulativeExecutionResponseBuilder::SetParentExecutionResponse(
   stdout_content_id_ = execution_response.stdout_content_id;
   stderr_content_id_ = execution_response.stderr_content_id;
   AddFileSets(input_files, execution_response);
+  process_creation_request_ = request;
 }
 
 void CumulativeExecutionResponseBuilder::AddChildResponse(

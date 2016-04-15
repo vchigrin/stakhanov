@@ -13,6 +13,7 @@
 
 #include "base/filesystem_utils.h"
 #include "stexecutor/rules_mappers/file_info.h"
+#include "stexecutor/process_creation_request.h"
 
 namespace rules_mappers {
 struct CachedExecutionResponse;
@@ -22,7 +23,9 @@ class ProcessCreationRequest;
 
 class CumulativeExecutionResponseBuilder {
  public:
-  CumulativeExecutionResponseBuilder();
+  CumulativeExecutionResponseBuilder(
+      int command_id,
+      CumulativeExecutionResponseBuilder* ancestor);
   void SetParentExecutionResponse(
        const ProcessCreationRequest& request,
        const std::vector<rules_mappers::FileInfo>& input_files,
@@ -36,6 +39,19 @@ class CumulativeExecutionResponseBuilder {
       BuildExecutionResponse();
   bool IsComplete() const;
   void ChildProcessCreated(int command_id);
+  const ProcessCreationRequest& process_creation_request() const {
+    return process_creation_request_;
+  }
+  CumulativeExecutionResponseBuilder* ancestor() const {
+    // We must not delete parent builder while child is not finshed,
+    // so that pointer should be always valid.
+    // TODO(vchigrin): Refactor. Treat all commands as cumulative,
+    // remove child-to-parent-id mapping from executing engine.
+    return ancestor_;
+  }
+  int command_id() const {
+    return command_id_;
+  }
 
  private:
   void AddFileSets(
@@ -53,9 +69,12 @@ class CumulativeExecutionResponseBuilder {
   FilePathSet removed_rel_paths_;
   int exit_code_;
   bool parent_completed_;
+  const int command_id_;
+  CumulativeExecutionResponseBuilder* ancestor_;
   std::unordered_set<int> running_child_ids_;
   std::string stdout_content_id_;
   std::string stderr_content_id_;
+  ProcessCreationRequest process_creation_request_;
 };
 
 #endif  // STEXECUTOR_CUMULATIVE_EXECUTION_RESPONSE_BUILDER_H_

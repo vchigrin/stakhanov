@@ -120,23 +120,13 @@ void ExecutingEngine::SaveCommandResults(
         command_info.input_files,
         *execution_response);
     if (builder->IsComplete()) {
-      LOG4CPLUS_INFO(logger_, "Parent command completed " << * request);
-      if (process_management_config_->ShouldStickToParent(*request)) {
-        LOG4CPLUS_INFO(
-            logger_,
-            "Don't save results - stick to parent command " << *request);
-      } else {
-        rules_mapper_->AddRule(
-            *request,
-            builder->BuildAllInputFiles(),
-            builder->BuildExecutionResponse());
-      }
+      CompleteCumulativeResponse(builder);
       parent_command_id_to_results_.erase(command_info.command_id);
-      UpdateAllParentResponsesForCompletedChild(
-          command_info.command_id,
-          command_info.input_files,
-          *execution_response);
     }
+    UpdateAllParentResponsesForCompletedChild(
+        command_info.command_id,
+        command_info.input_files,
+        *execution_response);
   } else {
     UpdateAllParentResponsesForCompletedChild(
         command_info.command_id,
@@ -161,6 +151,23 @@ void ExecutingEngine::SaveCommandResults(
   running_commands_.erase(it);
 }
 
+void ExecutingEngine::CompleteCumulativeResponse(
+    CumulativeExecutionResponseBuilder* builder) {
+  const ProcessCreationRequest& request = builder->process_creation_request();
+  LOG4CPLUS_INFO(
+      logger_, "All commands for cumulative command completed " << request);
+  if (process_management_config_->ShouldStickToParent(request)) {
+    LOG4CPLUS_INFO(
+        logger_,
+        "Don't save results - stick to parent command " << request);
+  } else {
+    rules_mapper_->AddRule(
+        request,
+        builder->BuildAllInputFiles(),
+        builder->BuildExecutionResponse());
+  }
+}
+
 void ExecutingEngine::UpdateAllParentResponsesForCompletedChild(
     int child_command_id,
     const std::vector<rules_mappers::FileInfo>& input_files,
@@ -181,18 +188,18 @@ void ExecutingEngine::UpdateAllParentResponses(
     int child_command_id,
     const std::vector<rules_mappers::FileInfo>& input_files,
     const rules_mappers::CachedExecutionResponse& execution_response) {
-  int current_command_id = first_parent_command_id;
-  while (current_command_id != kRootCommandId) {
-    CumulativeExecutionResponseBuilder* parent_builder =
-        GetCumulativeResponseBuilder(current_command_id);
-    parent_builder->AddChildResponse(
+  CumulativeExecutionResponseBuilder* current_builder =
+      GetCumulativeResponseBuilder(first_parent_command_id);
+  while (current_builder) {
+    current_builder->AddChildResponse(
         child_command_id,
         input_files, execution_response);
-    auto it_parent_id = child_command_id_to_parent_.find(
-        current_command_id);
-    if (it_parent_id == child_command_id_to_parent_.end())
-      break;
-    current_command_id = it_parent_id->second.command_id;
+    CumulativeExecutionResponseBuilder* next = current_builder->ancestor();
+    if (current_builder->IsComplete()) {
+      CompleteCumulativeResponse(current_builder);
+      parent_command_id_to_results_.erase(current_builder->command_id());
+    }
+    current_builder = next;
   }
 }
 
@@ -256,8 +263,14 @@ ExecutingEngine::GetCumulativeResponseBuilder(int command_id) {
   if (it != parent_command_id_to_results_.end())
     return it->second.get();
   LOG4CPLUS_ASSERT(logger_, command_id >= kFirstUserCommandId);
+  CumulativeExecutionResponseBuilder* parent = nullptr;
+  auto parent_it = child_command_id_to_parent_.find(command_id);
+  if (parent_it != child_command_id_to_parent_.end() &&
+      parent_it->second.command_id != kRootCommandId) {
+    parent = GetCumulativeResponseBuilder(parent_it->second.command_id);
+  }
   std::unique_ptr<CumulativeExecutionResponseBuilder> result(
-      new CumulativeExecutionResponseBuilder());
+      new CumulativeExecutionResponseBuilder(command_id, parent));
   auto* result_ptr = result.get();
   parent_command_id_to_results_.insert(std::make_pair(
       command_id, std::move(result)));
