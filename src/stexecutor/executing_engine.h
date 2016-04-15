@@ -19,6 +19,7 @@ class BuildDirectoryState;
 class CumulativeExecutionResponseBuilder;
 class ProcessCreationRequest;
 class ProcessCreationResponse;
+class ProcessManagementConfig;
 class FilesStorage;
 
 namespace rules_mappers {
@@ -42,7 +43,8 @@ class ExecutingEngine {
   ExecutingEngine(
       std::unique_ptr<FilesStorage> files_storage,
       std::unique_ptr<rules_mappers::RulesMapper> rules_mapper,
-      std::unique_ptr<BuildDirectoryState> build_dir_state);
+      std::unique_ptr<BuildDirectoryState> build_dir_state,
+      std::unique_ptr<ProcessManagementConfig> process_management_config);
   ~ExecutingEngine();
 
   ProcessCreationResponse AttemptCacheExecute(
@@ -85,6 +87,7 @@ class ExecutingEngine {
   std::unique_ptr<FilesStorage> files_storage_;
   std::unique_ptr<rules_mappers::RulesMapper> rules_mapper_;
   std::unique_ptr<BuildDirectoryState> build_dir_state_;
+  std::unique_ptr<ProcessManagementConfig> process_management_config_;
   std::unordered_map<
       int, std::unique_ptr<ProcessCreationRequest>> running_commands_;
   // Contains cumulative executing response for parent command.

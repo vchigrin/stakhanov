@@ -11,6 +11,8 @@
 #include "base/init_logging.h"
 #include "base/sthook_constants.h"
 #include "boost/program_options.hpp"
+#include "boost/property_tree/ptree.hpp"
+#include "boost/property_tree/json_parser.hpp"
 #include "boost/smart_ptr/make_shared.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
@@ -21,6 +23,7 @@
 #include "stexecutor/executing_engine.h"
 #include "stexecutor/executor_factory.h"
 #include "stexecutor/filesystem_files_storage.h"
+#include "stexecutor/process_management_config.h"
 #include "stexecutor/rules_mappers/in_memory_rules_mapper.h"
 #include "stexecutor/rules_mappers/redis_rules_mapper.h"
 #include "sthook/sthook_communication.h"
@@ -143,6 +146,19 @@ std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
   }
 }
 
+std::unique_ptr<ProcessManagementConfig>
+CreateProcessManagementConfig(
+    const boost::program_options::variables_map& variables) {
+  boost::property_tree::ptree config;
+  auto it = variables.find("config_file");
+  if (it != variables.end()) {
+    boost::filesystem::ifstream config_stream(
+        it->second.as<boost::filesystem::path>());
+    boost::property_tree::read_json(config_stream, config);
+  }
+  return std::make_unique<ProcessManagementConfig>(config);
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -164,7 +180,10 @@ int main(int argc, char* argv[]) {
       "Rules mapper to use. Either \"in-memory\" or \"redis\"")
       ("dump_env_dir",
        boost::program_options::value<boost::filesystem::path>(),
-        "Directory to dump env blocks for debugging purposes");
+        "Directory to dump env blocks for debugging purposes")
+      ("config_file",
+       boost::program_options::value<boost::filesystem::path>(),
+        "Path to config JSON file with additional options");
 
   boost::program_options::options_description in_memory_desc(
       "InMemory rules mapper options");
@@ -239,7 +258,9 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<ExecutingEngine> executing_engine(new ExecutingEngine(
       std::move(file_storage),
       std::move(rules_mapper),
-      std::move(build_dir_state)));
+      std::move(build_dir_state),
+      CreateProcessManagementConfig(variables)));
+
   boost::shared_ptr<ExecutorFactory> executor_factory =
       boost::make_shared<ExecutorFactory>(
           std::move(dll_injector),

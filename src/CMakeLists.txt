@@ -47,7 +47,13 @@ set(BOOST_INCLUDE "${BOOST_ROOT}")
 set(Boost_USE_STATIC_LIBS        ON) # only find static libs
 set(Boost_USE_MULTITHREADED      ON)
 find_package(Boost REQUIRED COMPONENTS
-     system filesystem program_options serialization date_time)
+  date_time
+  filesystem
+  program_options
+  regex
+  serialization
+  system
+)
 
 # ---------------------- Thrift --------------------------------------------
 set(WITH_SHARED_LIB OFF CACHE BOOL "" FORCE)

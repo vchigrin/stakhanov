@@ -1,0 +1,12 @@
+{
+  "process_rules": {
+    "stick_to_parent": [
+      {
+        "command_line_patterns": [
+          "^.*python\\.exe$",
+          "^--multiprocessing-fork$"
+        ]
+      }
+    ]
+  }
+}

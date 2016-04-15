@@ -12,6 +12,7 @@
 #include "stexecutor/files_storage.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
+#include "stexecutor/process_management_config.h"
 #include "stexecutor/build_directory_state.h"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/rules_mapper.h"
@@ -25,10 +26,12 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutingEngine");
 ExecutingEngine::ExecutingEngine(
     std::unique_ptr<FilesStorage> files_storage,
     std::unique_ptr<rules_mappers::RulesMapper> rules_mapper,
-    std::unique_ptr<BuildDirectoryState> build_dir_state)
+    std::unique_ptr<BuildDirectoryState> build_dir_state,
+    std::unique_ptr<ProcessManagementConfig> process_management_config)
      : files_storage_(std::move(files_storage)),
        rules_mapper_(std::move(rules_mapper)),
        build_dir_state_(std::move(build_dir_state)),
+       process_management_config_(std::move(process_management_config)),
        next_command_id_(kFirstUserCommandId) {
 }
 
@@ -118,10 +121,16 @@ void ExecutingEngine::SaveCommandResults(
         *execution_response);
     if (builder->IsComplete()) {
       LOG4CPLUS_INFO(logger_, "Parent command completed " << * request);
-      rules_mapper_->AddRule(
-          *request,
-          builder->BuildAllInputFiles(),
-          builder->BuildExecutionResponse());
+      if (process_management_config_->ShouldStickToParent(*request)) {
+        LOG4CPLUS_INFO(
+            logger_,
+            "Don't save results - stick to parent command " << *request);
+      } else {
+        rules_mapper_->AddRule(
+            *request,
+            builder->BuildAllInputFiles(),
+            builder->BuildExecutionResponse());
+      }
       parent_command_id_to_results_.erase(command_info.command_id);
       UpdateAllParentResponsesForCompletedChild(
           command_info.command_id,
@@ -133,15 +142,21 @@ void ExecutingEngine::SaveCommandResults(
         command_info.command_id,
         command_info.input_files,
         *execution_response);
-    LOG4CPLUS_INFO(logger_,
-        "Saving command " << *request
-        << " it has "
-        << command_info.input_files.size() << " input files and "
-        << command_info.output_files.size() << " output files");
-    rules_mapper_->AddRule(
-        *request,
-        command_info.input_files,
-        std::move(execution_response));
+    if (process_management_config_->ShouldStickToParent(*request)) {
+      LOG4CPLUS_INFO(
+          logger_,
+          "Don't save results - stick to parent command " << *request);
+    } else {
+      LOG4CPLUS_INFO(logger_,
+          "Saving command " << *request
+          << " it has "
+          << command_info.input_files.size() << " input files and "
+          << command_info.output_files.size() << " output files");
+      rules_mapper_->AddRule(
+          *request,
+          command_info.input_files,
+          std::move(execution_response));
+    }
   }
   running_commands_.erase(it);
 }

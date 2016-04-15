@@ -26,6 +26,8 @@ add_executable(stexecutor
   process_creation_request.h
   process_creation_response.cc
   process_creation_response.h
+  process_management_config.cc
+  process_management_config.h
   redis_key_prefixes.cc
   redis_key_prefixes.h
   rules_mappers/cached_execution_response.h
