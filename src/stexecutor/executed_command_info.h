@@ -7,6 +7,8 @@
 
 #include <string>
 #include <vector>
+
+#include "boost/filesystem.hpp"
 #include "base/filesystem_utils.h"
 #include "stexecutor/rules_mappers/file_info.h"
 
@@ -15,6 +17,7 @@ struct ExecutedCommandInfo {
   int command_id = 0;
   std::vector<rules_mappers::FileInfo> input_files;
   std::vector<rules_mappers::FileInfo> output_files;
+  std::vector<boost::filesystem::path> removed_rel_paths;
   std::vector<int> child_command_ids;
   std::string result_stdout;
   std::string result_stderr;

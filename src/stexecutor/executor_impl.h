@@ -68,8 +68,11 @@ class ExecutorImpl : public ExecutorIf {
   ExecutingEngine* executing_engine_;
   ExecutorFactory* executor_factory_;
   ExecutedCommandInfo command_info_;
-  std::unordered_set<boost::filesystem::path, base::FilePathHash> input_files_;
-  std::unordered_set<boost::filesystem::path, base::FilePathHash> output_files_;
+  using FilePathSet = std::unordered_set<
+      boost::filesystem::path, base::FilePathHash>;
+  FilePathSet input_files_;
+  FilePathSet output_files_;
+  FilePathSet removed_files_;
   base::ScopedHandle process_handle_;
   // List of Executors, related to parent processes, that share same
   // stdout and stderr handles.

@@ -21,6 +21,7 @@ class BuildDirectoryState {
       const boost::filesystem::path& rel_path);
   boost::filesystem::path MakeRelativePath(
       const boost::filesystem::path& abs_path) const;
+  void RemoveFile(const boost::filesystem::path& rel_path);
 
  private:
   // In case of appearing any non-const memvers add locks.

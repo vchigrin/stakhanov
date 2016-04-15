@@ -7,9 +7,11 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "base/filesystem_utils.h"
 #include "stexecutor/rules_mappers/file_info.h"
 
 namespace rules_mappers {
@@ -38,13 +40,17 @@ class CumulativeExecutionResponseBuilder {
  private:
   void AddFileSets(
       const std::vector<rules_mappers::FileInfo>& input_files,
-      const std::vector<rules_mappers::FileInfo>& output_files);
+      const rules_mappers::CachedExecutionResponse& execution_response);
 
-  using FileInfoSet = std::unordered_set<
+  using FileInfoMap = std::unordered_map<
+      boost::filesystem::path,
       rules_mappers::FileInfo,
-      rules_mappers::FileInfoHasher>;
-  FileInfoSet input_files_;
-  FileInfoSet output_files_;
+      base::FilePathHash>;
+  using FilePathSet = std::unordered_set<
+      boost::filesystem::path, base::FilePathHash>;
+  FileInfoMap input_files_;
+  FileInfoMap output_files_;
+  FilePathSet removed_rel_paths_;
   int exit_code_;
   bool parent_completed_;
   std::unordered_set<int> running_child_ids_;

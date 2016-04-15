@@ -50,6 +50,13 @@ bool BuildDirectoryState::TakeFileFromStorage(
   return files_storage->GetFileFromStorage(storage_id, abs_path);
 }
 
+void BuildDirectoryState::RemoveFile(const boost::filesystem::path& rel_path) {
+  boost::filesystem::path abs_path = build_dir_path_ / rel_path;
+  boost::system::error_code remove_error;
+  // Delete old file, if any.
+  boost::filesystem::remove(abs_path, remove_error);
+}
+
 boost::filesystem::path BuildDirectoryState::MakeRelativePath(
     const boost::filesystem::path& abs_path) const {
   if (!base::IsAncestorOfFile(build_dir_path_, abs_path))

@@ -34,7 +34,7 @@ void CumulativeExecutionResponseBuilder::SetParentExecutionResponse(
   exit_code_ = execution_response.exit_code;
   stdout_content_id_ = execution_response.stdout_content_id;
   stderr_content_id_ = execution_response.stderr_content_id;
-  AddFileSets(input_files, execution_response.output_files);
+  AddFileSets(input_files, execution_response);
 }
 
 void CumulativeExecutionResponseBuilder::AddChildResponse(
@@ -47,7 +47,7 @@ void CumulativeExecutionResponseBuilder::AddChildResponse(
     if (it != running_child_ids_.end())
       running_child_ids_.erase(it);
   }
-  AddFileSets(input_files, execution_response.output_files);
+  AddFileSets(input_files, execution_response);
 }
 
 std::vector<rules_mappers::FileInfo>
@@ -58,9 +58,11 @@ CumulativeExecutionResponseBuilder::BuildAllInputFiles() {
   // can not be treated as "input" for cumulative command. This most probably
   // indicates that one child command creates intermediate file, that other
   // child command uses.
-  for (const rules_mappers::FileInfo& file_info : input_files_) {
-    if (output_files_.count(file_info) == 0)
-      result.push_back(file_info);
+  for (const auto& file_path_and_info : input_files_) {
+    if (output_files_.count(file_path_and_info.first) == 0 &&
+        removed_rel_paths_.count(file_path_and_info.first) == 0) {
+      result.push_back(file_path_and_info.second);
+    }
   }
   return result;
 }
@@ -69,13 +71,15 @@ std::unique_ptr<rules_mappers::CachedExecutionResponse>
     CumulativeExecutionResponseBuilder::BuildExecutionResponse() {
   std::vector<rules_mappers::FileInfo> output_files;
   output_files.reserve(output_files_.size());
-  std::copy(
-      output_files_.begin(),
-      output_files_.end(),
-      std::back_inserter(output_files));
+  for (const auto& file_path_and_info : output_files_) {
+    if (removed_rel_paths_.count(file_path_and_info.first) == 0)
+      output_files.push_back(file_path_and_info.second);
+  }
   return std::unique_ptr<rules_mappers::CachedExecutionResponse>(
       new rules_mappers::CachedExecutionResponse(
           output_files,
+          std::vector<boost::filesystem::path>(
+              removed_rel_paths_.begin(), removed_rel_paths_.end()),
           exit_code_,
           stdout_content_id_,
           stderr_content_id_));
@@ -91,11 +95,14 @@ void CumulativeExecutionResponseBuilder::ChildProcessCreated(int command_id) {
 
 void CumulativeExecutionResponseBuilder::AddFileSets(
     const std::vector<rules_mappers::FileInfo>& input_files,
-    const std::vector<rules_mappers::FileInfo>& output_files) {
+    const rules_mappers::CachedExecutionResponse& execution_response) {
   for (const auto& file_info : input_files) {
-    input_files_.insert(file_info);
+    input_files_.insert(std::make_pair(file_info.rel_file_path, file_info));
   }
-  for (const auto& file_info : output_files) {
-    output_files_.insert(file_info);
+  for (const auto& file_info : execution_response.output_files) {
+    output_files_.insert(std::make_pair(file_info.rel_file_path, file_info));
   }
+  removed_rel_paths_.insert(
+      execution_response.removed_rel_paths.begin(),
+      execution_response.removed_rel_paths.end());
 }

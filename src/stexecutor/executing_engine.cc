@@ -65,6 +65,10 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
         file_info.storage_content_id,
         file_info.rel_file_path);
   }
+  for (const boost::filesystem::path& removed_path :
+       execution_response->removed_rel_paths) {
+    build_dir_state_->RemoveFile(removed_path);
+  }
   UpdateAllParentResponses(
       parent_command_id,
       kCacheHitCommandId,
@@ -98,6 +102,7 @@ void ExecutingEngine::SaveCommandResults(
   std::unique_ptr<rules_mappers::CachedExecutionResponse> execution_response(
       new rules_mappers::CachedExecutionResponse(
           command_info.output_files,
+          command_info.removed_rel_paths,
           command_info.exit_code,
           stdout_id,
           stderr_id));

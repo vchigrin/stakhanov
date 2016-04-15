@@ -121,6 +121,7 @@ void ExecutorImpl::OnFileDeleted(const std::string& abs_path) {
   boost::filesystem::path norm_path = NormalizePath(abs_path);
   // Need to avoid attempts to hash temp. files.
   output_files_.erase(norm_path);
+  removed_files_.insert(norm_path);
 }
 
 void ExecutorImpl::OnBeforeExitProcess() {
@@ -134,6 +135,10 @@ void ExecutorImpl::FillFileInfos() {
   BuildDirectoryState* build_dir_state = executing_engine_->build_dir_state();
   FilesStorage* files_storage = executing_engine_->files_storage();
   for (const boost::filesystem::path& output_path : output_files_) {
+    if (removed_files_.count(output_path) > 0) {
+      // Do not take into account temporary files.
+      continue;
+    }
     boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
         output_path);
     if (rel_path.empty()) {
@@ -165,6 +170,15 @@ void ExecutorImpl::FillFileInfos() {
     }
     command_info_.input_files.push_back(
         rules_mappers::FileInfo(rel_path, content_id));
+  }
+  command_info_.removed_rel_paths.reserve(removed_files_.size());
+  for (const boost::filesystem::path& removed_path : removed_files_) {
+    boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
+        removed_path);
+    if (rel_path.empty()) {
+      continue;
+    }
+    command_info_.removed_rel_paths.push_back(rel_path);
   }
 }
 
