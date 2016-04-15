@@ -34,25 +34,18 @@ bool LinkOrCopyFile(
   boost::system::error_code remove_error, link_error;
   // Delete old file, if any.
   boost::filesystem::remove(dst_path, remove_error);
-  boost::filesystem::create_hard_link(
+  // It is not always safe to link files, since build process
+  // may change outputs of previous commands.
+  // TODO(vchigrin): Add whitelist of safe-to-link file patterns.
+  boost::filesystem::copy_file(
       src_path, dst_path,
+      boost::filesystem::copy_option::overwrite_if_exists,
       link_error);
   if (link_error) {
-    // May be e.g. ERROR_TOO_MANY_LINKS on some "popular" files,
-    // fall back to copying.
     LOG4CPLUS_WARN(
-        logger_, "Failed hard_link file, fall back to copy " << src_path.c_str()
+        logger_, "Both copy and hard_link failed for " << src_path.c_str()
             << " Error code " << link_error);
-    boost::filesystem::copy_file(
-        src_path, dst_path,
-        boost::filesystem::copy_option::overwrite_if_exists,
-        link_error);
-    if (link_error) {
-      LOG4CPLUS_WARN(
-          logger_, "Both copy and hard_link failed for " << src_path.c_str()
-              << " Error code " << link_error);
-      return false;
-    }
+    return false;
   }
   return true;
 }
