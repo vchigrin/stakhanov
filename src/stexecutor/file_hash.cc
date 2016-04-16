@@ -26,7 +26,10 @@ bool HashFileContent(
       CreateFileW(
           file_path.native().c_str(),
           GENERIC_READ,
-          FILE_SHARE_READ,
+          // We hash files in OnBeforeExitProcess, so event if process
+          // has some handles open for writing, they should not be used
+          // for actual writing.
+          FILE_SHARE_READ | FILE_SHARE_WRITE,
           NULL,
           OPEN_EXISTING,
           FILE_ATTRIBUTE_NORMAL,

@@ -192,6 +192,11 @@ NTSTATUS NTAPI NewNtCreateFile(
     ULONG create_options,
     PVOID ea_buffer,
     ULONG ea_length) {
+  // HACK: Always add "FILE_SHARE_READ" to allow stexecutor
+  // read file before process exit. If it ever breaks something, we'll have
+  // to save handles of all files and manually close them in
+  // OnBeforeExitProcess.
+  share_access |= FILE_SHARE_READ;
   NTSTATUS result = NtCreateFile(
       file_handle,
       desired_access,
