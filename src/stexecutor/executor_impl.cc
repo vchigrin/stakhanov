@@ -120,6 +120,12 @@ void ExecutorImpl::OnFileDeleted(const std::string& abs_path) {
   boost::filesystem::path norm_path = NormalizePath(abs_path);
   // Need to avoid attempts to hash temp. files.
   output_files_.erase(norm_path);
+  // rc.exe re-opens some temp files without write bit set, causing
+  // they appear both as input and output.
+  // TODO(vchigrin): Consider better handling of deleted files, we should
+  // be able cache commands like "del foo.txt" where "foo.txt" must be
+  // considered as input.
+  input_files_.erase(norm_path);
   removed_files_.insert(norm_path);
 }
 
