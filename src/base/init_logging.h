@@ -6,7 +6,7 @@
 #define BASE_INIT_LOGGING_H_
 
 namespace base {
-void InitLogging();
+void InitLogging(bool allow_console_output);
 }
 
 #endif  // BASE_INIT_LOGGING_H_

@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
   using apache::thrift::transport::TServerSocket;
   using apache::thrift::transport::TBufferedTransportFactory;
   using apache::thrift::protocol::TBinaryProtocolFactory;
-  base::InitLogging();
+  base::InitLogging(true);
   boost::program_options::options_description general_desc("General");
   general_desc.add_options()
       ("help", "Print help message")
