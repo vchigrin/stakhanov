@@ -75,7 +75,7 @@ def gen_for_platform(vs_dir, platform_type):
     msvs_bat_file_command = [bat_path, platform_type]
     grab_environ(msvs_bat_file_command)
     gen_for_build_type('Debug', platform_type, msvs_bat_file_command)
-    gen_for_build_type('Release', platform_type, msvs_bat_file_command)
+    gen_for_build_type('RelWithDebInfo', platform_type, msvs_bat_file_command)
 
 
 def main():
