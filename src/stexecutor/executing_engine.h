@@ -52,8 +52,7 @@ class ExecutingEngine {
       const ProcessCreationRequest& resuest);
   void SaveCommandResults(const ExecutedCommandInfo& command_info);
   void AssociatePIDWithCommandId(
-      int parent_command_id,
-      int32_t pid, int command_id,
+      int32_t pid, int child_command_id,
       bool should_append_std_streams);
   void RegisterByPID(
       int32_t pid,
@@ -71,38 +70,26 @@ class ExecutingEngine {
  private:
   std::mutex instance_lock_;
 
-  void UpdateAllParentResponsesForCompletedChild(
-      int child_command_id,
-      const std::vector<rules_mappers::FileInfo>& input_files,
-      const rules_mappers::CachedExecutionResponse& execution_response);
-
-  void UpdateAllParentResponses(
-      int first_parent_command_id,
-      int child_command_id,
-      const std::vector<rules_mappers::FileInfo>& input_files,
-      const rules_mappers::CachedExecutionResponse& execution_response);
-
   void CompleteCumulativeResponse(CumulativeExecutionResponseBuilder* builder);
 
-  CumulativeExecutionResponseBuilder* GetCumulativeResponseBuilder(
-      int command_id);
+  CumulativeExecutionResponseBuilder* GetResponseBuilder(int command_id) {
+    auto it = active_commands_.find(command_id);
+    if (it != active_commands_.end())
+      return it->second.get();
+    return nullptr;
+  }
+
   std::unique_ptr<FilesStorage> files_storage_;
   std::unique_ptr<rules_mappers::RulesMapper> rules_mapper_;
   std::unique_ptr<BuildDirectoryState> build_dir_state_;
   std::unique_ptr<ProcessManagementConfig> process_management_config_;
-  std::unordered_map<
-      int, std::unique_ptr<ProcessCreationRequest>> running_commands_;
-  // Contains cumulative executing response for parent command.
+  // Command is "active" if either it process is not completed yet, or any
+  // of commands, corresponding to it child processes is "active"
   std::unordered_map<
       int, std::unique_ptr<CumulativeExecutionResponseBuilder>>
-          parent_command_id_to_results_;
-  struct ParentInfo {
-    int command_id;
-    bool should_append_std_streams;
-  };
-  std::unordered_map<int, ParentInfo> child_command_id_to_parent_;
+          active_commands_;
 
-  std::unordered_map<int32_t, int> pid_to_command_id_;
+  std::unordered_map<int32_t, int> pid_to_unassigned_command_id_;
   int next_command_id_;
 };
 

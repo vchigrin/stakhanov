@@ -25,9 +25,9 @@ class CumulativeExecutionResponseBuilder {
  public:
   CumulativeExecutionResponseBuilder(
       int command_id,
+      const ProcessCreationRequest& request,
       CumulativeExecutionResponseBuilder* ancestor);
-  void SetParentExecutionResponse(
-       const ProcessCreationRequest& request,
+  void SetOwnExecutionResponse(
        const std::vector<rules_mappers::FileInfo>& input_files,
        const rules_mappers::CachedExecutionResponse& execution_response);
   void AddChildResponse(
@@ -45,13 +45,18 @@ class CumulativeExecutionResponseBuilder {
   CumulativeExecutionResponseBuilder* ancestor() const {
     // We must not delete parent builder while child is not finshed,
     // so that pointer should be always valid.
-    // TODO(vchigrin): Refactor. Treat all commands as cumulative,
-    // remove child-to-parent-id mapping from executing engine.
     return ancestor_;
   }
   int command_id() const {
     return command_id_;
   }
+  bool should_append_std_streams_to_parent() const {
+    return should_append_std_streams_to_parent_;
+  }
+  void set_should_append_std_streams_to_parent(bool value) {
+    should_append_std_streams_to_parent_ = value;
+  }
+
 
  private:
   void AddFileSets(
@@ -68,13 +73,14 @@ class CumulativeExecutionResponseBuilder {
   FileInfoMap output_files_;
   FilePathSet removed_rel_paths_;
   int exit_code_;
-  bool parent_completed_;
+  bool own_process_completed_;
   const int command_id_;
   CumulativeExecutionResponseBuilder* ancestor_;
   std::unordered_set<int> running_child_ids_;
   std::string stdout_content_id_;
   std::string stderr_content_id_;
   ProcessCreationRequest process_creation_request_;
+  bool should_append_std_streams_to_parent_;
 };
 
 #endif  // STEXECUTOR_CUMULATIVE_EXECUTION_RESPONSE_BUILDER_H_

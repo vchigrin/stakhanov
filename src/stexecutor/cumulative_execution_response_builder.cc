@@ -22,24 +22,25 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
 
 CumulativeExecutionResponseBuilder::CumulativeExecutionResponseBuilder(
     int command_id,
+    const ProcessCreationRequest& request,
     CumulativeExecutionResponseBuilder* ancestor)
     : exit_code_(0),
-      parent_completed_(false),
+      own_process_completed_(false),
       command_id_(command_id),
-      ancestor_(ancestor) {
+      ancestor_(ancestor),
+      process_creation_request_(request),
+      should_append_std_streams_to_parent_(false) {
 }
 
-void CumulativeExecutionResponseBuilder::SetParentExecutionResponse(
-    const ProcessCreationRequest& request,
+void CumulativeExecutionResponseBuilder::SetOwnExecutionResponse(
     const std::vector<rules_mappers::FileInfo>& input_files,
     const rules_mappers::CachedExecutionResponse& execution_response) {
-  LOG4CPLUS_ASSERT(logger_, !parent_completed_);
-  parent_completed_ = true;
+  LOG4CPLUS_ASSERT(logger_, !own_process_completed_);
+  own_process_completed_ = true;
   exit_code_ = execution_response.exit_code;
   stdout_content_id_ = execution_response.stdout_content_id;
   stderr_content_id_ = execution_response.stderr_content_id;
   AddFileSets(input_files, execution_response);
-  process_creation_request_ = request;
 }
 
 void CumulativeExecutionResponseBuilder::AddChildResponse(
@@ -91,7 +92,7 @@ std::unique_ptr<rules_mappers::CachedExecutionResponse>
 }
 
 bool CumulativeExecutionResponseBuilder::IsComplete() const {
-  return parent_completed_ && running_child_ids_.empty();
+  return own_process_completed_ && running_child_ids_.empty();
 }
 
 void CumulativeExecutionResponseBuilder::ChildProcessCreated(int command_id) {
