@@ -6,6 +6,12 @@
           "^.*python\\.exe$",
           "^--multiprocessing-fork$"
         ]
+      },
+      {
+        "command_line_patterns": [
+          "^.*python(\\.exe|\\.bat)?$",
+          "^.*rcssmin.py$"
+        ]
       }
     ]
   }

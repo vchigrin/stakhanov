@@ -1,5 +1,6 @@
 *.cc text
 *.h text
+*.json text
 *.py text
 *.thrift text
 *.txt text
