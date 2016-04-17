@@ -10,6 +10,7 @@
 
 #include "base/scoped_handle.h"
 #include "base/string_utils.h"
+#include "boost/property_tree/ptree.hpp"
 #include "stexecutor/file_hash.h"
 #include "third_party/cryptopp/md5.h"
 #include "log4cplus/logger.h"
@@ -30,13 +31,21 @@ std::string StorageIdFromHasher(CryptoPP::Weak::MD5* hasher) {
 
 bool LinkOrCopyFile(
     const boost::filesystem::path& src_path,
-    const boost::filesystem::path& dst_path) {
+    const boost::filesystem::path& dst_path,
+    bool is_safe_to_link) {
   boost::system::error_code remove_error, link_error;
   // Delete old file, if any.
   boost::filesystem::remove(dst_path, remove_error);
   // It is not always safe to link files, since build process
   // may change outputs of previous commands.
-  // TODO(vchigrin): Add whitelist of safe-to-link file patterns.
+  if (is_safe_to_link) {
+    boost::filesystem::create_hard_link(
+        src_path, dst_path,
+        link_error);
+    if (!link_error) {
+      return true;
+    }
+  }
   boost::filesystem::copy_file(
       src_path, dst_path,
       boost::filesystem::copy_option::overwrite_if_exists,
@@ -53,12 +62,46 @@ bool LinkOrCopyFile(
 }  // namespace
 
 FilesystemFilesStorage::FilesystemFilesStorage(
-    const boost::filesystem::path& storage_dir)
-    : storage_dir_(storage_dir) {
+      const boost::property_tree::ptree& config)
+    : max_file_size_(0) {
+  try {
+    LoadConfig(config);
+  } catch(const std::exception& ex) {
+    LOG4CPLUS_FATAL(logger_, "Error during config parsing " << ex.what());
+  }
+}
+
+void FilesystemFilesStorage::LoadConfig(
+    const boost::property_tree::ptree& config) {
+  const boost::property_tree::ptree files_storage_node = config.get_child(
+      "files_storage");
+  storage_dir_ = files_storage_node.get<boost::filesystem::path>(
+      "storage_dir");
+  max_file_size_ = files_storage_node.get<uint32_t>("max_file_size_bytes");
+  boost::property_tree::ptree safe_to_link_extensions =
+      files_storage_node.get_child("safe_to_link_extensions");
+  for (const auto& ext : safe_to_link_extensions) {
+    safe_to_link_extensions_.insert(ext.second.data());
+  }
 }
 
 std::string FilesystemFilesStorage::StoreFile(
     const boost::filesystem::path& abs_file_path) {
+  if (max_file_size_) {
+    boost::system::error_code ec;
+    auto file_size = boost::filesystem::file_size(abs_file_path, ec);
+    if (ec) {
+      LOG4CPLUS_WARN(
+          logger_, "Failed get file size " << abs_file_path.string().c_str());
+    } else {
+      if (file_size > max_file_size_) {
+        LOG4CPLUS_INFO(
+            logger_,
+            "Do not store too big file " << abs_file_path.string().c_str());
+        return std::string();
+      }
+    }
+  }
   std::string file_id = GetFileHash(abs_file_path);
   LOG4CPLUS_DEBUG(logger_, "Storing file " << abs_file_path.string().c_str()
                         << " file_id " << file_id.c_str());
@@ -70,7 +113,7 @@ std::string FilesystemFilesStorage::StoreFile(
   if (dest_path.empty())
     return std::string();
 
-  if (!LinkOrCopyFile(abs_file_path, dest_path))
+  if (!LinkOrCopyFile(abs_file_path, dest_path, IsSafeToLink(abs_file_path)))
     return std::string();
   return file_id;
 }
@@ -87,10 +130,17 @@ bool FilesystemFilesStorage::GetFileFromStorage(
     return false;
   }
   boost::filesystem::create_directories(dest_path.parent_path());
-  return LinkOrCopyFile(src_path, dest_path);
+  return LinkOrCopyFile(src_path, dest_path, IsSafeToLink(dest_path));
 }
 
 std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
+  if (max_file_size_) {
+    if (data.length() > max_file_size_) {
+      LOG4CPLUS_INFO(
+          logger_, "Do not store too big content of length " << data.length());
+      return std::string();
+    }
+  }
   CryptoPP::Weak::MD5 hasher;
   if (!data.empty()) {
     hasher.Update(
@@ -197,4 +247,12 @@ boost::filesystem::path FilesystemFilesStorage::FilePathFromId(
   std::string top_dir_name = storage_id.substr(0, kTopDirCharacters);
   std::string object_name = storage_id.substr(kTopDirCharacters);
   return storage_dir_ / top_dir_name / object_name;
+}
+
+bool FilesystemFilesStorage::IsSafeToLink(
+    const boost::filesystem::path& file_path) {
+  std::string ext = file_path.extension().generic_string();
+  if (ext.empty())
+    return false;
+  return safe_to_link_extensions_.count(ext) != 0;
 }

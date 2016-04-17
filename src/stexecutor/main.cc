@@ -146,17 +146,13 @@ std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
   }
 }
 
-std::unique_ptr<ProcessManagementConfig>
-CreateProcessManagementConfig(
+boost::property_tree::ptree LoadConfig(
     const boost::program_options::variables_map& variables) {
+  boost::filesystem::ifstream config_stream(
+      variables["config_file"].as<boost::filesystem::path>());
   boost::property_tree::ptree config;
-  auto it = variables.find("config_file");
-  if (it != variables.end()) {
-    boost::filesystem::ifstream config_stream(
-        it->second.as<boost::filesystem::path>());
-    boost::property_tree::read_json(config_stream, config);
-  }
-  return std::make_unique<ProcessManagementConfig>(config);
+  boost::property_tree::read_json(config_stream, config);
+  return config;
 }
 
 }  // namespace
@@ -169,9 +165,6 @@ int main(int argc, char* argv[]) {
   boost::program_options::options_description general_desc("General");
   general_desc.add_options()
       ("help", "Print help message")
-      ("cache_dir",
-       boost::program_options::value<boost::filesystem::path>()->required(),
-       "Directory with cached build results")
       ("build_dir",
        boost::program_options::value<boost::filesystem::path>()->required(),
         "Directory where build will run")
@@ -182,7 +175,7 @@ int main(int argc, char* argv[]) {
        boost::program_options::value<boost::filesystem::path>(),
         "Directory to dump env blocks for debugging purposes")
       ("config_file",
-       boost::program_options::value<boost::filesystem::path>(),
+       boost::program_options::value<boost::filesystem::path>()->required(),
         "Path to config JSON file with additional options");
 
   boost::program_options::options_description in_memory_desc(
@@ -224,8 +217,6 @@ int main(int argc, char* argv[]) {
     std::cerr << ex.what() << std::endl;
     return 1;
   }
-  boost::filesystem::path cache_dir_path =
-      variables["cache_dir"].as<boost::filesystem::path>();
   boost::filesystem::path build_dir_path =
       variables["build_dir"].as<boost::filesystem::path>();
 
@@ -247,8 +238,11 @@ int main(int argc, char* argv[]) {
       current_executable_dir / base::kStHookDllName64Bit,
       load_library_addr32,
       load_library_addr64);
+
+  boost::property_tree::ptree config = LoadConfig(variables);
+
   std::unique_ptr<FilesStorage> file_storage(
-      new FilesystemFilesStorage(cache_dir_path));
+      new FilesystemFilesStorage(config));
   std::unique_ptr<rules_mappers::RulesMapper> rules_mapper =
       CreateRulesMapper(variables);
   if (!rules_mapper)
@@ -259,7 +253,7 @@ int main(int argc, char* argv[]) {
       std::move(file_storage),
       std::move(rules_mapper),
       std::move(build_dir_state),
-      CreateProcessManagementConfig(variables)));
+      std::make_unique<ProcessManagementConfig>(config)));
 
   boost::shared_ptr<ExecutorFactory> executor_factory =
       boost::make_shared<ExecutorFactory>(
