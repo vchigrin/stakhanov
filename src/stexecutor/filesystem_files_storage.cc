@@ -103,8 +103,6 @@ std::string FilesystemFilesStorage::StoreFile(
     }
   }
   std::string file_id = GetFileHash(abs_file_path);
-  LOG4CPLUS_DEBUG(logger_, "Storing file " << abs_file_path.string().c_str()
-                        << " file_id " << file_id.c_str());
   if (file_id.empty())
     return file_id;
 
@@ -122,8 +120,6 @@ bool FilesystemFilesStorage::GetFileFromStorage(
     const std::string& storage_id,
     const boost::filesystem::path& dest_path) {
   std::lock_guard<std::mutex> instance_lock(instance_lock_);
-  LOG4CPLUS_DEBUG(logger_, "Retrieving file to " << dest_path.string().c_str()
-                        << " file_id " << storage_id.c_str());
   boost::filesystem::path src_path = FilePathFromId(storage_id);
   if (!boost::filesystem::exists(src_path)) {
     LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << src_path.c_str());

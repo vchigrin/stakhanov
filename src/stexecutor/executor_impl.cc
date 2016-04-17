@@ -28,7 +28,6 @@ boost::filesystem::path NormalizePath(const std::string& abs_path) {
     // Passed in path are always absolute. If it does not contain column,
     // than usually means that this is reserved file name like "con", "nul",
     // or some pipe name. Just ignore them.
-    LOG4CPLUS_INFO(logger_, "Met special path " << abs_path.c_str());
     return boost::filesystem::path();
   }
   std::string lower_path = base::UTF8ToLower(abs_path);
@@ -147,8 +146,6 @@ void ExecutorImpl::FillFileInfos() {
     boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
         output_path);
     if (rel_path.empty()) {
-      LOG4CPLUS_INFO(
-          logger_, "Output file is not storage file " << output_path);
       continue;
     }
     std::string storage_id = files_storage->StoreFile(output_path);
@@ -165,7 +162,6 @@ void ExecutorImpl::FillFileInfos() {
     boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
         input_path);
     if (rel_path.empty()) {
-      LOG4CPLUS_DEBUG(logger_, "Input file is not storage file " << input_path);
       continue;
     }
     std::string content_id = build_dir_state->GetFileContentId(rel_path);
