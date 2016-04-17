@@ -729,7 +729,31 @@ void AfterCloseHandle(BOOL result, HANDLE handle) {
   }
 }
 
+void FlushUCRTIfPossible() {
+  // HACK: Manually flush CRT buffers where possible.
+  // We experience problems with some programs, like re2c.exe, that
+  // buffer some output, and ucrt flush it only during
+  // DllMain(DLL_PROCESS_DETACH) call. Without manual flushing stexecutor
+  // caches not fully written files.
+  // Current approach with manual flush fixes *SOME* problems. Since
+  // theoretically there might be other modules buffering output till
+  // DllMain call. Proper solution is to find a way to directly hook
+  // ZwTerminateProcess in ntdll.dll and notify executor from there, when
+  // all DllMain calls done. We can not do that hook through IAT since
+  // source of that call is ntdll...
+  // TODO(vchigrin): Find some generic solution.
+  HMODULE ucrt_dll = GetModuleHandleW(L"ucrtbase.dll");
+  if (!ucrt_dll)
+    return;
+  typedef int (*FCLOSEAPP_PTR)();
+  FCLOSEAPP_PTR fclose_all = reinterpret_cast<FCLOSEAPP_PTR>(
+      GetProcAddress(ucrt_dll, "_fcloseall"));
+  if (fclose_all)
+    fclose_all();
+}
+
 void BeforeExitProcess(UINT exit_code) {
+  FlushUCRTIfPossible();
   {
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
     GetExecutor()->OnBeforeExitProcess();
