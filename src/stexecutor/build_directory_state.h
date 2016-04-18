@@ -5,8 +5,11 @@
 #ifndef STEXECUTOR_BUILD_DIRECTORY_STATE_H_
 #define STEXECUTOR_BUILD_DIRECTORY_STATE_H_
 
+#include <mutex>
 #include <string>
+#include <unordered_map>
 
+#include "base/filesystem_utils.h"
 #include "boost/filesystem.hpp"
 
 class FilesStorage;
@@ -22,11 +25,14 @@ class BuildDirectoryState {
   boost::filesystem::path MakeRelativePath(
       const boost::filesystem::path& abs_path) const;
   void RemoveFile(const boost::filesystem::path& rel_path);
+  void NotifyFileChanged(const boost::filesystem::path& rel_path);
 
  private:
-  // In case of appearing any non-const memvers add locks.
-  // Methods of this class are called from ExecutorImpl threads, so it must
-  // be thread-safe.
+  mutable std::mutex instance_lock_;
+  mutable std::unordered_map<
+      boost::filesystem::path,
+      std::string,
+      base::FilePathHash> content_id_cache_;
   const boost::filesystem::path build_dir_path_;
 };
 

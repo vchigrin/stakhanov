@@ -74,6 +74,12 @@ bool ExecutorImpl::HookedCreateFile(
     return true;
   }
   if (for_writing) {
+    auto* build_dir_state = executing_engine_->build_dir_state();
+    boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
+        norm_path);
+    if (!rel_path.empty()) {
+      build_dir_state->NotifyFileChanged(rel_path);
+    }
     if (!outputs_filter_->CanDropOutput(norm_path))
       output_files_.insert(norm_path);
   } else {
