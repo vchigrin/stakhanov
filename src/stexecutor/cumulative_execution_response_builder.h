@@ -56,7 +56,16 @@ class CumulativeExecutionResponseBuilder {
   void set_should_append_std_streams_to_parent(bool value) {
     should_append_std_streams_to_parent_ = value;
   }
+  bool is_failed() const {
+    return is_failed_;
+  }
 
+  void MarkOwnCommandFailed() {
+    is_failed_ = true;
+    own_process_completed_ = true;
+  }
+
+  void MarkChildCommandFailed(int command_id);
 
  private:
   void AddFileSets(
@@ -74,6 +83,7 @@ class CumulativeExecutionResponseBuilder {
   FilePathSet removed_rel_paths_;
   int exit_code_;
   bool own_process_completed_;
+  bool is_failed_;
   const int command_id_;
   CumulativeExecutionResponseBuilder* ancestor_;
   std::unordered_set<int> running_child_ids_;

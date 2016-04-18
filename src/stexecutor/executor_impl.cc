@@ -153,9 +153,12 @@ void ExecutorImpl::FillFileInfos() {
     }
     std::string storage_id = files_storage->StoreFile(output_path);
     if (storage_id.empty()) {
-      LOG4CPLUS_ERROR(
+      // It is normal situation e.g. if file is too big.
+      LOG4CPLUS_INFO(
           logger_,
-          "Failed save file to storage, skip command results caching ");
+          "Don't save file to storage, skip command results caching "
+          << output_path);
+      command_info_.has_errors = true;
       return;
     }
     command_info_.output_files.push_back(

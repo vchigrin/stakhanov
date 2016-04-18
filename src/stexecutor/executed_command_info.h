@@ -15,6 +15,7 @@
 struct ExecutedCommandInfo {
   int exit_code = 0;
   int command_id = 0;
+  bool has_errors = false;
   std::vector<rules_mappers::FileInfo> input_files;
   std::vector<rules_mappers::FileInfo> output_files;
   std::vector<boost::filesystem::path> removed_rel_paths;

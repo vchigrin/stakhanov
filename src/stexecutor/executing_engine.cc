@@ -115,24 +115,25 @@ void ExecutingEngine::SaveCommandResults(
         logger_, "Invalid command id passed " << command_info.command_id);
     return;
   }
-  const ProcessCreationRequest& request =
-      response_builder->process_creation_request();
+  if (command_info.has_errors) {
+    response_builder->MarkOwnCommandFailed();
+  } else {
+    std::string stdout_id = files_storage_->StoreContent(
+        command_info.result_stdout);
+    std::string stderr_id = files_storage_->StoreContent(
+        command_info.result_stderr);
+    std::unique_ptr<rules_mappers::CachedExecutionResponse> execution_response(
+        new rules_mappers::CachedExecutionResponse(
+            command_info.output_files,
+            command_info.removed_rel_paths,
+            command_info.exit_code,
+            stdout_id,
+            stderr_id));
 
-  std::string stdout_id = files_storage_->StoreContent(
-      command_info.result_stdout);
-  std::string stderr_id = files_storage_->StoreContent(
-      command_info.result_stderr);
-  std::unique_ptr<rules_mappers::CachedExecutionResponse> execution_response(
-      new rules_mappers::CachedExecutionResponse(
-          command_info.output_files,
-          command_info.removed_rel_paths,
-          command_info.exit_code,
-          stdout_id,
-          stderr_id));
-
-  response_builder->SetOwnExecutionResponse(
-      command_info.input_files,
-      *execution_response);
+    response_builder->SetOwnExecutionResponse(
+        command_info.input_files,
+        *execution_response);
+  }
   if (response_builder->IsComplete()) {
     CompleteCumulativeResponse(response_builder);
   }
@@ -150,9 +151,13 @@ void ExecutingEngine::CompleteCumulativeResponse(
       builder->BuildExecutionResponse();
   CumulativeExecutionResponseBuilder* parent = builder->ancestor();
   if (parent) {
-    parent->AddChildResponse(
-        builder->command_id(),
-        input_files, *execution_response);
+    if (builder->is_failed()) {
+      parent->MarkChildCommandFailed(builder->command_id());
+    } else {
+      parent->AddChildResponse(
+          builder->command_id(),
+          input_files, *execution_response);
+    }
     if (parent->IsComplete())
       CompleteCumulativeResponse(parent);
   }
@@ -161,11 +166,15 @@ void ExecutingEngine::CompleteCumulativeResponse(
         logger_,
         "Don't save results - stick to parent command " << request);
   } else {
-    LOG4CPLUS_INFO(logger_ , "Saving command " << request);
-    rules_mapper_->AddRule(
-        request,
-        std::move(input_files),
-        std::move(execution_response));
+    if (builder->is_failed()) {
+      LOG4CPLUS_INFO(logger_ , "Dont save failed command " << request);
+    } else {
+      LOG4CPLUS_INFO(logger_ , "Saving command " << request);
+      rules_mapper_->AddRule(
+          request,
+          std::move(input_files),
+          std::move(execution_response));
+    }
   }
   active_commands_.erase(builder->command_id());
 }

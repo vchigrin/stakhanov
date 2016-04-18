@@ -26,6 +26,7 @@ CumulativeExecutionResponseBuilder::CumulativeExecutionResponseBuilder(
     CumulativeExecutionResponseBuilder* ancestor)
     : exit_code_(0),
       own_process_completed_(false),
+      is_failed_(false),
       command_id_(command_id),
       ancestor_(ancestor),
       process_creation_request_(request),
@@ -97,6 +98,16 @@ bool CumulativeExecutionResponseBuilder::IsComplete() const {
 
 void CumulativeExecutionResponseBuilder::ChildProcessCreated(int command_id) {
   running_child_ids_.insert(command_id);
+}
+
+void CumulativeExecutionResponseBuilder::MarkChildCommandFailed(
+    int command_id) {
+  is_failed_ = true;
+  LOG4CPLUS_ASSERT(logger_, command_id != ExecutingEngine::kCacheHitCommandId);
+  auto it = running_child_ids_.find(command_id);
+  LOG4CPLUS_ASSERT(logger_, it != running_child_ids_.end());
+  if (it != running_child_ids_.end())
+    running_child_ids_.erase(it);
 }
 
 void CumulativeExecutionResponseBuilder::AddFileSets(
