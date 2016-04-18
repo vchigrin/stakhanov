@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -73,6 +74,10 @@ class ExecutorImpl : public ExecutorIf {
   FilePathSet input_files_;
   FilePathSet output_files_;
   FilePathSet removed_files_;
+  using FilePathMapping = std::unordered_map<
+      boost::filesystem::path, boost::filesystem::path, base::FilePathHash>;
+  // Need to track files renaming.
+  FilePathMapping input_path_to_new_path_;
   base::ScopedHandle process_handle_;
   // List of Executors, related to parent processes, that share same
   // stdout and stderr handles.

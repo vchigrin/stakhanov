@@ -74,7 +74,10 @@ void ExecutorImpl::HookedRenameFile(
   } else {
     // This is not our output - add both "input" andn "output" to
     // describe rename.
+    removed_files_.insert(norm_old_path);
     input_files_.insert(norm_old_path);
+    input_path_to_new_path_.insert(
+        std::make_pair(norm_old_path, norm_new_path));
   }
   output_files_.insert(norm_new_path);
 }
@@ -161,10 +164,17 @@ void ExecutorImpl::FillFileInfos() {
   for (const boost::filesystem::path& input_path : input_files_) {
     boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
         input_path);
-    if (rel_path.empty()) {
+    boost::filesystem::path rel_original_path;
+    auto it = input_path_to_new_path_.find(input_path);
+    if (it != input_path_to_new_path_.end())
+      rel_original_path = build_dir_state->MakeRelativePath(it->second);
+    else
+      rel_original_path = rel_path;
+    if (rel_path.empty() || rel_original_path.empty()) {
       continue;
     }
-    std::string content_id = build_dir_state->GetFileContentId(rel_path);
+    std::string content_id = build_dir_state->GetFileContentId(
+        rel_original_path);
     if (content_id.empty()) {
       LOG4CPLUS_ERROR(logger_, "Failed hash input file " << input_path);
       continue;
