@@ -19,13 +19,15 @@
 class DllInjector;
 class ExecutingEngine;
 class ExecutorFactory;
+class OutputsFilter;
 
 class ExecutorImpl : public ExecutorIf {
  public:
   ExecutorImpl(
       DllInjector* dll_injector,
       ExecutingEngine* executing_engine,
-      ExecutorFactory* executor_factory);
+      ExecutorFactory* executor_factory,
+      OutputsFilter* outputs_filter);
   void Initialize(
       const int32_t current_pid, const bool is_root_process) override;
   bool HookedCreateFile(
@@ -68,6 +70,7 @@ class ExecutorImpl : public ExecutorIf {
   DllInjector* dll_injector_;
   ExecutingEngine* executing_engine_;
   ExecutorFactory* executor_factory_;
+  OutputsFilter* outputs_filter_;
   ExecutedCommandInfo command_info_;
   using FilePathSet = std::unordered_set<
       boost::filesystem::path, base::FilePathHash>;

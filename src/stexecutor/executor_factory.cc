@@ -8,6 +8,7 @@
 #include "log4cplus/loggingmacros.h"
 #include "stexecutor/dll_injector.h"
 #include "stexecutor/executor_impl.h"
+#include "stexecutor/outputs_filter.h"
 
 namespace {
 
@@ -17,10 +18,12 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(L"ExecutorFactory");
 
 ExecutorFactory::ExecutorFactory(
     std::unique_ptr<DllInjector> dll_injector,
-    ExecutingEngine* executing_engine)
+    ExecutingEngine* executing_engine,
+    std::unique_ptr<OutputsFilter> outputs_filter)
     : dll_injector_(std::move(dll_injector)),
       executing_engine_(executing_engine),
-      active_handlers_count_(0) {
+      active_handlers_count_(0),
+      outputs_filter_(std::move(outputs_filter)) {
 }
 
 ExecutorIf* ExecutorFactory::getHandler(
@@ -30,7 +33,7 @@ ExecutorIf* ExecutorFactory::getHandler(
     ++active_handlers_count_;
   }
   ExecutorImpl* result = new ExecutorImpl(
-      dll_injector_.get(), executing_engine_, this);
+      dll_injector_.get(), executing_engine_, this, outputs_filter_.get());
   result->set_dump_env_dir(dump_env_dir_);
   return result;
 }

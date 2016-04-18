@@ -19,5 +19,8 @@
     "storage_dir": "C:\\test_st_cache",
     "max_file_size_bytes": 10485760,
     "safe_to_link_extensions": [".obj", ".pch", ".exe", ".dll"]
+  },
+  "output_filtering": {
+    "safe_to_drop_output_extensions": [".ilk"]
   }
 }

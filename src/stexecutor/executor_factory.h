@@ -17,12 +17,14 @@
 class DllInjector;
 class ExecutingEngine;
 class ExecutorImpl;
+class OutputsFilter;
 
 class ExecutorFactory : public ExecutorIfFactory {
  public:
   ExecutorFactory(
       std::unique_ptr<DllInjector> dll_injector,
-      ExecutingEngine* executing_engine);
+      ExecutingEngine* executing_engine,
+      std::unique_ptr<OutputsFilter> outputs_filter);
   ExecutorIf* getHandler(
       const ::apache::thrift::TConnectionInfo& connInfo) override;
   void releaseHandler(ExecutorIf* handler) override;
@@ -41,6 +43,7 @@ class ExecutorFactory : public ExecutorIfFactory {
   std::condition_variable handler_released_;
   std::mutex instance_lock_;
   std::unordered_map<int, std::shared_ptr<ExecutorImpl>> active_executors_;
+  std::unique_ptr<OutputsFilter> outputs_filter_;
   boost::filesystem::path dump_env_dir_;
 };
 

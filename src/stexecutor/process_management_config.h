@@ -29,7 +29,7 @@ class ProcessManagementConfig {
       return !command_line_patterns.empty();
     }
   };
-  void ProcessManagementConfig::LoadStickToParentPatterns(
+  void LoadStickToParentPatterns(
       const boost::property_tree::ptree& config);
   static bool RequestMatchesPattern(
       const ProcessMatchPattern& pattern,
