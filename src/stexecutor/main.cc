@@ -71,7 +71,7 @@ using ServerType = apache::thrift::server::TThreadedServer;
 std::unique_ptr<ServerType> g_server;
 
 BOOL WINAPI ConsoleHandler(DWORD ctrl_type) {
-  if (ctrl_type == CTRL_C_EVENT) {
+  if (ctrl_type == CTRL_C_EVENT || ctrl_type == CTRL_BREAK_EVENT) {
     g_server->stop();
     return TRUE;
   }
@@ -271,10 +271,12 @@ int main(int argc, char* argv[]) {
       boost::make_shared<TServerSocket>(sthook::GetExecutorPort()),
       boost::make_shared<TBufferedTransportFactory>(),
       boost::make_shared<TBinaryProtocolFactory>());
-  std::cout << "Start serving requests. Use Ctrl+C to stop server."
-            << std::endl;
+  std::cout
+     << "Start serving requests. Use Ctrl+C or Ctrl+Break to stop server."
+     << std::endl;
   SetConsoleCtrlHandler(&ConsoleHandler, TRUE);
   g_server->serve();
+  std::cout << "Server stopped." << std::endl;
   SetConsoleCtrlHandler(&ConsoleHandler, FALSE);
   g_server.reset();
   executor_factory->Finish();
