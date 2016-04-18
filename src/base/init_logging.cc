@@ -22,12 +22,12 @@ void InitLogging(bool allow_console_output) {
       std::auto_ptr<log4cplus::Layout>(new log4cplus::TTCCLayout()));
   log4cplus::Logger::getRoot().addAppender(
       log4cplus::SharedAppenderPtr(append_1.get()));
-
+#ifndef OFFICIAL_BUILD
   log4cplus::helpers::SharedObjectPtr<log4cplus::Log4jUdpAppender>
       append_2(new log4cplus::Log4jUdpAppender(L"127.0.0.1", 7071));
   log4cplus::Logger::getRoot().addAppender(
       log4cplus::SharedAppenderPtr(append_2.get()));
-
+#endif
   if (allow_console_output) {
     // log to stderr, immediate flush true. We use console output only
     // for errors and warnings, so it is better to output them ASAP.
@@ -37,7 +37,13 @@ void InitLogging(bool allow_console_output) {
     log4cplus::Logger::getRoot().addAppender(console_appender);
   }
 
-  log4cplus::Logger::getRoot().setLogLevel(log4cplus::TRACE_LOG_LEVEL);
+
+#ifdef OFFICIAL_BUILD
+  const auto kLogLevel = log4cplus::WARN_LOG_LEVEL;
+#else
+  const auto kLogLevel = log4cplus::TRACE_LOG_LEVEL;
+#endif
+  log4cplus::Logger::getRoot().setLogLevel(kLogLevel);
 }
 
 }  // namespace base

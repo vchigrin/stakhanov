@@ -33,6 +33,9 @@ if (WIN32)
   add_definitions(-DWIN32_LEAN_AND_MEAN)
 endif()
 
+# TODO(vchigrin): Provide way to configure that outside CMake files.
+add_definitions(-DOFFICIAL_BUILD=1)
+
 # TODO(vchigrin): Use ExternalProject_Add
 set(LOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME OFF CACHE BOOL "" FORCE)
 
