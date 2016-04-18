@@ -33,7 +33,22 @@ boost::filesystem::path NormalizePath(const std::string& abs_path) {
   }
   std::string lower_path = base::UTF8ToLower(abs_path);
   std::wstring wide_path = base::ToWideFromUTF8(lower_path);
-  return boost::filesystem::path(wide_path);
+  boost::filesystem::path source(wide_path);
+  // boost::filesystem::canonical requires path to exist, that is not
+  // always acceptable. So remove ".." and "." entries by-hand
+  boost::filesystem::path result;
+  boost::filesystem::path root(source.root_path());
+  for (const auto& component : source) {
+    if (component == L".")
+      continue;
+    if (component == L"..") {
+      if (result != root)
+        result.remove_filename();
+      continue;
+    }
+    result /= component;
+  }
+  return result;
 }
 #else
 #error "This function at present implemented for Windows only"
