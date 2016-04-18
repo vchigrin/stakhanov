@@ -35,6 +35,14 @@ endif()
 
 # TODO(vchigrin): Provide way to configure that outside CMake files.
 add_definitions(-DOFFICIAL_BUILD=1)
+foreach(flag_var
+    CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_RELWITHDEBINFO
+    CMAKE_C_FLAGS CMAKE_C_FLAGS_RELWITHDEBINFO
+    )
+    if(${flag_var} MATCHES "/MD")
+        string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+    endif()
+endforeach(flag_var)
 
 # TODO(vchigrin): Use ExternalProject_Add
 set(LOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME OFF CACHE BOOL "" FORCE)
@@ -48,6 +56,8 @@ else()
 endif()
 set(BOOST_INCLUDE "${BOOST_ROOT}")
 set(Boost_USE_STATIC_LIBS        ON) # only find static libs
+set(Boost_USE_STATIC_RUNTIME     ON)
+set(Boost_USE_STATIC_RUNTIME     ON)
 set(Boost_USE_MULTITHREADED      ON)
 find_package(Boost REQUIRED COMPONENTS
   date_time
