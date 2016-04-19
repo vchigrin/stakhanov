@@ -8,7 +8,7 @@
 
 namespace sthook {
 
-static const int kDefaultExecutorPort = 9090;
+static const int kDefaultExecutorPort = 9092;
 
 int GetExecutorPort() {
   const char* port_var = getenv("ST_PORT");
