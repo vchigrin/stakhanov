@@ -82,8 +82,12 @@ bool ExecutorImpl::HookedCreateFile(
     }
     if (!outputs_filter_->CanDropOutput(norm_path))
       output_files_.insert(norm_path);
+    // At present we do not support commands having as input and output
+    // the same path.
+    input_files_.erase(norm_path);
   } else {
-    input_files_.insert(norm_path);
+    if (output_files_.count(norm_path) == 0)
+      input_files_.insert(norm_path);
   }
   return true;
 }
@@ -98,7 +102,7 @@ void ExecutorImpl::HookedRenameFile(
     // One of existing outputs renamed.
     output_files_.erase(it_output);
   } else {
-    // This is not our output - add both "input" andn "output" to
+    // This is not our output - add both "input" and "output" to
     // describe rename.
     removed_files_.insert(norm_old_path);
     input_files_.insert(norm_old_path);
