@@ -5,6 +5,7 @@
 #include "sthook/intercepted_functions.h"
 
 #include <shellapi.h>
+#include <versionhelpers.h>
 #include <windows.h>
 
 #include <codecvt>
@@ -807,9 +808,6 @@ REGISTRATION_PTR g_intercepts_table[] = {
 
 bool InstallHooks(HMODULE current_module) {
   FunctionsInterceptor::DllInterceptedFunctions ntdll_intercepts;
-  // Intercepted either from kernelbase.dll on system that has it or
-  // from kernel32.dll on older systems. We must hook kernelbase since some
-  // processes link directly with it, skipping kernel32.dll (e.g. cmd.exe).
   FunctionsInterceptor::DllInterceptedFunctions kernel_intercepts;
   ntdll_intercepts.insert(std::make_pair("NtCreateFile", &NewNtCreateFile));
   ntdll_intercepts.insert(std::make_pair(
@@ -823,7 +821,16 @@ bool InstallHooks(HMODULE current_module) {
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
           "ntdll.dll", ntdll_intercepts));
-  HMODULE kernel_module = GetModuleHandleA("kernel32.dll");
+  // Why we hook different kernel modules:
+  // On Windows7 some functions, like CreateProcess* are not exported by
+  // kernelbase.dll, and kernel32 should be used.
+  // On Windows 10, Windows Server 2012, we must hook kernelbase, since
+  // cmd.exe on these systems links directly with it, and kernel32 hooks is not
+  // enough. Fortunately, on these systems CreateProces* functions are
+  // exported by kernelbase.
+  std::string kernel_module_name =
+      (IsWindows8OrGreater() ? "kernelbase.dll" : "kernel32.dll");
+  HMODULE kernel_module = GetModuleHandleA(kernel_module_name.c_str());
   for (size_t i = 0;
       i < sizeof(g_intercepts_table) / sizeof(g_intercepts_table[0]); ++i) {
     g_intercepts_table[i](kernel_module, &kernel_intercepts);
@@ -831,7 +838,7 @@ bool InstallHooks(HMODULE current_module) {
 
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
-          "kernel32.dll", kernel_intercepts));
+          kernel_module_name, kernel_intercepts));
   LOG4CPLUS_ASSERT(logger_, kernel_module);
   g_original_CreateProcessW = reinterpret_cast<LPCREATE_PROCESS_W>(
       GetProcAddress(kernel_module, "CreateProcessW"));
