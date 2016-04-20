@@ -53,7 +53,8 @@ class ExecutingEngine {
   void SaveCommandResults(const ExecutedCommandInfo& command_info);
   void AssociatePIDWithCommandId(
       int32_t pid, int child_command_id,
-      bool should_append_std_streams);
+      bool should_append_std_streams,
+      bool* do_not_track);
   void RegisterByPID(
       int32_t pid,
       int* command_id,

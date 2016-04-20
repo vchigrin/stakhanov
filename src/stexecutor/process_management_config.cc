@@ -21,7 +21,7 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
 ProcessManagementConfig::ProcessManagementConfig(
     const boost::property_tree::ptree& config) {
   try {
-    LoadStickToParentPatterns(config);
+    LoadConfig(config);
   } catch(const std::exception& ex) {
     LOG4CPLUS_FATAL(logger_, "Error during config parsing " << ex.what());
   }
@@ -29,28 +29,50 @@ ProcessManagementConfig::ProcessManagementConfig(
 
 bool ProcessManagementConfig::ShouldStickToParent(
     const ProcessCreationRequest& request) const {
-  for (const ProcessMatchPattern& stick_pattern : stick_to_parent_patterns_) {
+  return MatchesAnyPattern(request, stick_to_parent_patterns_);
+}
+
+// static
+bool ProcessManagementConfig::MatchesAnyPattern(
+    const ProcessCreationRequest& request,
+    const std::vector<ProcessMatchPattern>& patterns) {
+  for (const ProcessMatchPattern& stick_pattern : patterns) {
     if (RequestMatchesPattern(stick_pattern, request))
       return true;
   }
   return false;
 }
 
-void ProcessManagementConfig::LoadStickToParentPatterns(
+bool ProcessManagementConfig::ShouldDoNotTrack(
+    const ProcessCreationRequest& request) const {
+  return MatchesAnyPattern(request, do_not_track_patterns_);
+}
+
+void ProcessManagementConfig::LoadConfig(
     const boost::property_tree::ptree& config) {
-  boost::property_tree::ptree stick_to_parent = config.get_child(
-      "process_rules.stick_to_parent",
+  LoadPatternsByPath(
+      config, "process_rules.stick_to_parent", &stick_to_parent_patterns_);
+  LoadPatternsByPath(
+      config, "process_rules.do_not_track", &do_not_track_patterns_);
+}
+
+void ProcessManagementConfig::LoadPatternsByPath(
+    const boost::property_tree::ptree& config,
+    const std::string& path,
+    std::vector<ProcessMatchPattern>* patterns) {
+  boost::property_tree::ptree parent_node = config.get_child(
+      path,
       boost::property_tree::ptree());
-  if (stick_to_parent.empty())
+  if (parent_node.empty())
     return;
-  stick_to_parent_patterns_.reserve(stick_to_parent.size());
-  for (const auto& process_item : stick_to_parent) {
+  patterns->reserve(parent_node.size());
+  for (const auto& process_item : parent_node) {
     ProcessMatchPattern pattern = LoadProcessMatchPattern(process_item.second);
     if (!pattern.is_valid()) {
       LOG4CPLUS_ERROR(logger_, "Invalid process match pattern in config");
       continue;
     }
-    stick_to_parent_patterns_.emplace_back(std::move(pattern));
+    patterns->emplace_back(std::move(pattern));
   }
 }
 

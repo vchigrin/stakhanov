@@ -180,7 +180,10 @@ void ExecutingEngine::CompleteCumulativeResponse(
 }
 
 void ExecutingEngine::AssociatePIDWithCommandId(
-    int32_t pid, int child_command_id, bool should_append_std_streams) {
+    int32_t pid,
+    int child_command_id,
+    bool should_append_std_streams,
+    bool* do_not_track) {
   std::lock_guard<std::mutex> instance_lock(instance_lock_);
   CumulativeExecutionResponseBuilder* command_builder = GetResponseBuilder(
       child_command_id);
@@ -190,7 +193,21 @@ void ExecutingEngine::AssociatePIDWithCommandId(
   }
   command_builder->set_should_append_std_streams_to_parent(
       should_append_std_streams);
-  pid_to_unassigned_command_id_.insert(std::make_pair(pid, child_command_id));
+  if (process_management_config_->ShouldDoNotTrack(
+      command_builder->process_creation_request())) {
+    // We will never receive SaveCommandResults() or any other call
+    // for this command, so we should complete everything now.
+    *do_not_track = true;
+    command_builder->MarkOwnCommandFailed();
+    if (command_builder->IsComplete()) {
+      CompleteCumulativeResponse(command_builder);
+    }
+    // TODO(vchigrin): We should track outputs in some way to invalidate
+    // build_dir_state_
+  } else {
+    pid_to_unassigned_command_id_.insert(
+        std::make_pair(pid, child_command_id));
+  }
 }
 
 void ExecutingEngine::RegisterByPID(
