@@ -259,10 +259,15 @@ std::string ExecutorImpl::ComputeEnvironmentHash(
     // "=ExitCode", "=C:", etc., that greatly vary, preventing caching.
     // Hope programs will not use them and skip them. Return in case
     // any problems.
-    if (!str.empty() && str[0] != '=') {
-      hasher.Update(
-          reinterpret_cast<const uint8_t*>(str.data()), str.length());
-    }
+    if (str.empty() || str[0] == '=')
+      continue;
+    // Some helper variables, set by TeamCity. They may vary from build
+    // to build.
+    // TODO(vchigrin): Move env. vars exclusion rules to config file.
+    if (str.find("BUILD_") == 0 || str.find("TEAMCITY_") == 0)
+      continue;
+    hasher.Update(
+        reinterpret_cast<const uint8_t*>(str.data()), str.length());
   }
   std::vector<uint8_t> digest(hasher.DigestSize());
   hasher.Final(&digest[0]);
