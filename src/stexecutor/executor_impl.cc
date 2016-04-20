@@ -146,7 +146,6 @@ void ExecutorImpl::OnSuspendedProcessCreated(
   if (!dll_injector_->InjectInto(child_pid)) {
     LOG4CPLUS_ERROR(logger_, "Failed inject dll into process " << child_pid);
   }
-  command_info_.child_command_ids.push_back(child_pid);
 }
 
 void ExecutorImpl::OnFileDeleted(const std::string& abs_path) {

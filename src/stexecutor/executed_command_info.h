@@ -19,7 +19,6 @@ struct ExecutedCommandInfo {
   std::vector<rules_mappers::FileInfo> input_files;
   std::vector<rules_mappers::FileInfo> output_files;
   std::vector<boost::filesystem::path> removed_rel_paths;
-  std::vector<int> child_command_ids;
   std::string result_stdout;
   std::string result_stderr;
 };
