@@ -26,28 +26,42 @@ std::string AbsPathUTF8(const std::basic_string<CHAR_TYPE>& path) {
 }
 
 template<typename CHAR_TYPE>
-DWORD GetLongPathNameImpl(
-    const CHAR_TYPE* shord_path, CHAR_TYPE* long_path, DWORD buffer_length);
+struct LongPathNameHelpers {
+};
 
 template<>
-inline DWORD GetLongPathNameImpl(
-    const CHAR* shord_path, CHAR* long_path, DWORD buffer_length) {
-  return GetLongPathNameA(shord_path, long_path, buffer_length);
-}
+struct LongPathNameHelpers<CHAR> {
+  static const CHAR kShortPathNameMark = '~';
+
+  static inline DWORD GetLongPathNameImpl(
+      const CHAR* shord_path, CHAR* long_path, DWORD buffer_length) {
+    return GetLongPathNameA(shord_path, long_path, buffer_length);
+  }
+};
 
 template<>
-inline DWORD GetLongPathNameImpl(
-    const WCHAR* shord_path, WCHAR* long_path, DWORD buffer_length) {
-  return GetLongPathNameW(shord_path, long_path, buffer_length);
-}
+struct LongPathNameHelpers<WCHAR> {
+  static const WCHAR kShortPathNameMark = L'~';
+
+  static inline DWORD GetLongPathNameImpl(
+      const WCHAR* shord_path, WCHAR* long_path, DWORD buffer_length) {
+    return GetLongPathNameW(shord_path, long_path, buffer_length);
+  }
+};
 
 
 template<typename CHAR_TYPE>
 std::basic_string<CHAR_TYPE> ToLongPathName(
     const std::basic_string<CHAR_TYPE>& src) {
+  if (src.find(LongPathNameHelpers<CHAR_TYPE>::kShortPathNameMark) ==
+      std::basic_string<CHAR_TYPE>::npos) {
+    // This path does not look like short path name.
+    // TODO(vchigrin): Is it 100% correct?
+    return src;
+  }
   std::vector<CHAR_TYPE> buffer(src.length() + 1);
   while (true) {
-    DWORD api_result = GetLongPathNameImpl(
+    DWORD api_result = LongPathNameHelpers<CHAR_TYPE>::GetLongPathNameImpl(
         src.c_str(), &buffer[0], static_cast<DWORD>(buffer.size()));
     if (api_result > buffer.size()) {
       buffer.resize(api_result);
