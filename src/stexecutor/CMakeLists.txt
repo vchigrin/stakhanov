@@ -18,12 +18,12 @@ add_executable(stexecutor
   executor_impl.h
   file_hash.cc
   file_hash.h
+  files_filter.cc
+  files_filter.h
   files_storage.h
   filesystem_files_storage.cc
   filesystem_files_storage.h
   main.cc
-  outputs_filter.cc
-  outputs_filter.h
   process_creation_request.cc
   process_creation_request.h
   process_creation_response.cc

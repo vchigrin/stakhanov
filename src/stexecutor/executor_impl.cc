@@ -14,7 +14,7 @@
 #include "stexecutor/dll_injector.h"
 #include "stexecutor/executing_engine.h"
 #include "stexecutor/executor_factory.h"
-#include "stexecutor/outputs_filter.h"
+#include "stexecutor/files_filter.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
 #include "third_party/cryptopp/md5.h"
@@ -60,11 +60,11 @@ ExecutorImpl::ExecutorImpl(
     DllInjector* dll_injector,
     ExecutingEngine* executing_engine,
     ExecutorFactory* executor_factory,
-    OutputsFilter* outputs_filter)
+    FilesFilter* files_filter)
     : dll_injector_(dll_injector),
       executing_engine_(executing_engine),
       executor_factory_(executor_factory),
-      outputs_filter_(outputs_filter) {
+      files_filter_(files_filter) {
 }
 
 bool ExecutorImpl::HookedCreateFile(
@@ -80,13 +80,14 @@ bool ExecutorImpl::HookedCreateFile(
     if (!rel_path.empty()) {
       build_dir_state->NotifyFileChanged(rel_path);
     }
-    if (!outputs_filter_->CanDropOutput(norm_path))
+    if (!files_filter_->CanDropOutput(norm_path))
       output_files_.insert(norm_path);
     // At present we do not support commands having as input and output
     // the same path.
     input_files_.erase(norm_path);
   } else {
-    if (output_files_.count(norm_path) == 0)
+    if (output_files_.count(norm_path) == 0 &&
+        !files_filter_->CanDropInput(norm_path))
       input_files_.insert(norm_path);
   }
   return true;
@@ -105,11 +106,13 @@ void ExecutorImpl::HookedRenameFile(
     // This is not our output - add both "input" and "output" to
     // describe rename.
     removed_files_.insert(norm_old_path);
-    input_files_.insert(norm_old_path);
-    input_path_to_new_path_.insert(
-        std::make_pair(norm_old_path, norm_new_path));
+    if (!files_filter_->CanDropInput(norm_old_path)) {
+      input_files_.insert(norm_old_path);
+      input_path_to_new_path_.insert(
+          std::make_pair(norm_old_path, norm_new_path));
+    }
   }
-  if (!outputs_filter_->CanDropOutput(norm_new_path))
+  if (!files_filter_->CanDropOutput(norm_new_path))
     output_files_.insert(norm_new_path);
 }
 

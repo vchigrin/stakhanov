@@ -23,7 +23,7 @@
 #include "stexecutor/executing_engine.h"
 #include "stexecutor/executor_factory.h"
 #include "stexecutor/filesystem_files_storage.h"
-#include "stexecutor/outputs_filter.h"
+#include "stexecutor/files_filter.h"
 #include "stexecutor/process_management_config.h"
 #include "stexecutor/rules_mappers/in_memory_rules_mapper.h"
 #include "stexecutor/rules_mappers/redis_rules_mapper.h"
@@ -260,7 +260,7 @@ int main(int argc, char* argv[]) {
       boost::make_shared<ExecutorFactory>(
           std::move(dll_injector),
           executing_engine.get(),
-          std::make_unique<OutputsFilter>(config));
+          std::make_unique<FilesFilter>(config));
   auto it = variables.find("dump_env_dir");
   if (it != variables.end()) {
     executor_factory->set_dump_env_dir(
