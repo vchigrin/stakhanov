@@ -4,6 +4,7 @@
 
 #include "stexecutor/build_directory_state.h"
 
+#include <ctime>
 #include <vector>
 
 #include "log4cplus/logger.h"
@@ -56,7 +57,19 @@ bool BuildDirectoryState::TakeFileFromStorage(
   std::lock_guard<std::mutex> lock(instance_lock_);
   boost::filesystem::path abs_path = build_dir_path_ / rel_path;
   content_id_cache_.erase(rel_path);
-  return files_storage->GetFileFromStorage(storage_id, abs_path);
+  if (!files_storage->GetFileFromStorage(storage_id, abs_path))
+    return false;
+  // We must update modification time of file (files storage may not do this
+  // if it uses hard links). Without it some commands,
+  // like used by NaCL toolcain in chromium build, will fail.
+  std::time_t now = std::time(nullptr);
+  boost::system::error_code ec;
+  boost::filesystem::last_write_time(abs_path, now, ec);
+  if (ec) {
+    LOG4CPLUS_ERROR(logger_, "Failed set file mtime, error " << ec);
+    return false;
+  }
+  return true;
 }
 
 void BuildDirectoryState::RemoveFile(const boost::filesystem::path& rel_path) {
