@@ -82,6 +82,8 @@ static const int FileRenameInformation = 10;
 #define FOR_EACH_INTERCEPTS(DO_IT) \
     DO_IT(CloseHandle, nullptr, &AfterCloseHandle, BOOL, HANDLE) \
     DO_IT(ExitProcess, &BeforeExitProcess, nullptr, VOID, UINT) \
+    DO_IT(TerminateProcess, &BeforeTerminateProcess, nullptr, VOID, \
+          HANDLE, UINT) \
     DO_IT(WriteFile, &BeforeWriteFile, nullptr, BOOL, \
           HANDLE, LPCVOID, DWORD, LPDWORD, LPOVERLAPPED) \
     DO_IT(WriteFileEx, &BeforeWriteFileEx, nullptr, BOOL, \
@@ -763,6 +765,12 @@ void BeforeExitProcess(UINT exit_code) {
   // CloseHandle() calls when some modules already unloaded.
   // May cause strange crashes of python interpreter.
   sthook::InterceptHelperBase::DisableAll();
+}
+
+void BeforeTerminateProcess(HANDLE process_handle, UINT exit_code) {
+  // Cygwin for some reason uses TerminateProcess(GetCurrentProcess()..);
+  if (GetProcessId(process_handle) == GetCurrentProcessId())
+    BeforeExitProcess(exit_code);
 }
 
 void AfterDeleteFileA(BOOL result, LPCSTR file_path) {
