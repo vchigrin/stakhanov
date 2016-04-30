@@ -73,6 +73,6 @@ target_include_directories(stexecutor PUBLIC
 )
 
 if(NOT CMAKE_CL_64)
-  add_executable(get_load_library_addr32 get_load_library_addr.cc)
-  add_dependencies(stexecutor get_load_library_addr32)
+  add_executable(get_ntdll_proc32 get_ntdll_proc32.cc)
+  add_dependencies(stexecutor get_ntdll_proc32)
 endif()

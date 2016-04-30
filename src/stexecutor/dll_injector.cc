@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <winternl.h>
 
+#include <algorithm>
 #include <vector>
 
 #include "base/scoped_handle.h"
@@ -32,44 +33,255 @@ bool Is64BitProcess(const base::ScopedHandle& process_handle) {
 typedef NTSTATUS (NTAPI *LdrLoadDllPtr)(
     PWCHAR path_to_file,
     ULONG* flags,
-    const UNICODE_STRING *module_file_name,
+    const /* UNICODE_STRING */ void* module_file_name,
     HMODULE* module_handle);
 
 typedef NTSTATUS (NTAPI *NtSetEventPtr)(HANDLE event, PLONG prev_state);
 
+template<typename ptr_size_uint>
 struct RemoteData {
-  UNICODE_STRING dll;
-  HANDLE event;
-  LdrLoadDllPtr LdrLoadDll;
-  NtSetEventPtr NtSetEvent;
+  struct {
+    USHORT length;
+    USHORT max_length;
+    ptr_size_uint buffer;
+  } dll_name;
+  ptr_size_uint ldr_load_dll;
+  ptr_size_uint nt_set_event;
+  ptr_size_uint event;
+
+  static void FillBuffer(
+      void* buffer_addr,
+      size_t remote_string_char_len,
+      void* remote_string_addr,
+      HANDLE remote_event_handle,
+      ptr_size_uint ldr_load_dll_addr,
+      ptr_size_uint nt_set_event_addr) {
+    RemoteData<ptr_size_uint>* local_data =
+        reinterpret_cast<RemoteData<ptr_size_uint>*>(buffer_addr);
+    local_data->dll_name.length = static_cast<USHORT>(
+        remote_string_char_len * sizeof(WCHAR));
+    local_data->dll_name.max_length = local_data->dll_name.length;
+    local_data->dll_name.buffer = reinterpret_cast<ptr_size_uint>(
+        remote_string_addr);
+    local_data->ldr_load_dll = ldr_load_dll_addr;
+    local_data->nt_set_event = nt_set_event_addr;
+    local_data->event = reinterpret_cast<ptr_size_uint>(remote_event_handle);
+  }
 };
+
+using RemoteData32 = RemoteData<uint32_t>;
+using RemoteData64 = RemoteData<uint64_t>;
+
+#ifdef _M_AMD64
+using RemoteDataNative = RemoteData64;
+#else
+using RemoteDataNative = RemoteData32;
+#endif
+
 
 #pragma code_seg(push, ".cave")
 #pragma runtime_checks("", off)
 #pragma check_stack(off)
 #pragma strict_gs_check(push, off)
-extern "C" static void _fastcall code_cave(const RemoteData* data) {
+extern "C" static void _fastcall code_cave(const RemoteDataNative* data) {
   HMODULE module;
   ULONG flags = LOAD_WITH_ALTERED_SEARCH_PATH;
 
-  NTSTATUS error = data->LdrLoadDll(NULL, &flags, &data->dll, &module);
-  data->NtSetEvent(data->event, NULL);
+  NTSTATUS error = reinterpret_cast<LdrLoadDllPtr>(data->ldr_load_dll)(
+      NULL, &flags, &data->dll_name, &module);
+  reinterpret_cast<NtSetEventPtr>(data->nt_set_event)(
+      reinterpret_cast<HANDLE>(data->event), NULL);
   while (true) {}
 }
 extern "C" static void code_cave_end() { }
 #pragma strict_gs_check(pop)
 #pragma code_seg(pop)
 
+#ifdef _M_AMD64
+// For injecting code to WOW64 processes, has same logic as code_cave routine.
+static const uint8_t kCodeCave32[] = {
+  0x83, 0xEC, 0x08,  //        sub esp,8
+  0x56,  //                    push esi
+  0x8D, 0x44, 0x24, 0x08,  //  lea eax,[esp+8]
+  0xC7, 0x44, 0x24, 0x04,
+  0x08, 0x00, 0x00, 0x00,  //  mov dword ptr [esp+4],8
+  0x50,  //                    push eax
+  0x8B, 0xF1,  //              mov  esi,ecx
+  0x8D, 0x44, 0x24, 0x08,  //  lea  eax,[esp+8]
+  0x56,  //                    push esi
+  0x50,  //                    push eax
+  0x6A, 0x00,  //              push 0
+  0x8B, 0x46, 0x08,  //        mov  eax,dword ptr [esi+08h]
+  0xFF, 0xD0,  //              call eax
+  0x8B, 0x46, 0x0C,  //        mov  eax,dword ptr [esi+0Ch]
+  0x6A, 0x00,  //              push 0
+  0xFF, 0x76, 0x10,  //        push dword ptr [esi+10h]
+  0xFF, 0xD0,  //              call eax
+  0xEB, 0xFE,  //              jmp  <current_eip>
+};
+#endif
+
+template<bool is_wow64>
+struct ContextChangerTraits {};
+
+template<>
+struct ContextChangerTraits<false> {
+  using CONTEXT_TYPE = CONTEXT;
+
+  static bool GetContext(HANDLE thread_handle, CONTEXT_TYPE* ctx) {
+    ctx->ContextFlags = CONTEXT_ALL;
+    if (!GetThreadContext(thread_handle, ctx)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "GetThreadContext failed, error " << error);
+      return false;
+    }
+    return true;
+  }
+
+  static bool SetContext(HANDLE thread_handle, const CONTEXT_TYPE& ctx) {
+    if (!SetThreadContext(thread_handle, &ctx)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "SetThreadContext failed, error " << error);
+      return false;
+    }
+    return true;
+  }
+
+  static void SetUpCodeCave(
+      CONTEXT_TYPE* ctx,
+      intptr_t code_addr,
+      intptr_t param_addr) {
+#ifdef _M_AMD64
+    ctx->Rip = code_addr;
+    ctx->Rcx = param_addr;
+#else
+    ctx->Eip = code_addr;
+    ctx->Ecx = param_addr;
+#endif
+  }
+};
+
+template<>
+struct ContextChangerTraits<true> {
+  using CONTEXT_TYPE = WOW64_CONTEXT;
+  static const int kAllFlags = WOW64_CONTEXT_ALL;
+
+  static bool GetContext(HANDLE thread_handle, CONTEXT_TYPE* ctx) {
+    ctx->ContextFlags = WOW64_CONTEXT_ALL;
+    if (!Wow64GetThreadContext(thread_handle, ctx)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(
+          logger_, "Wow64GetThreadContext failed, error " << error);
+      return false;
+    }
+    return true;
+  }
+
+  static bool SetContext(HANDLE thread_handle, const CONTEXT_TYPE& ctx) {
+    if (!Wow64SetThreadContext(thread_handle, &ctx)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(
+          logger_, "Wow64SetThreadContext failed, error " << error);
+      return false;
+    }
+    return true;
+  }
+
+  static void SetUpCodeCave(
+      CONTEXT_TYPE* ctx,
+      intptr_t code_addr,
+      intptr_t param_addr) {
+    ctx->Eip = static_cast<DWORD>(code_addr);
+    ctx->Ecx = static_cast<DWORD>(param_addr);
+  }
+};
+
+class ContextChangerBase {
+ public:
+  virtual bool GetOriginalContext() = 0;
+  virtual void SetUpCodeCave(intptr_t code_addr, intptr_t param_addr) = 0;
+  virtual bool SwitchCodeCaveContext() = 0;
+  virtual bool SwitchToOriginalContext() = 0;
+
+  static std::unique_ptr<ContextChangerBase> Create(
+      bool is_wow64, HANDLE thread_handle);
+};
+
+template<bool is_wow64>
+class ContextChanger : public ContextChangerBase {
+ public:
+  explicit ContextChanger(HANDLE thread_handle)
+    : thread_handle_(thread_handle) {
+    memset(&old_context_, 0, sizeof(old_context_));
+    memset(&new_context_, 0, sizeof(new_context_));
+  }
+
+  bool GetOriginalContext() override {
+    return ContextChangerTraits<is_wow64>::GetContext(
+        thread_handle_, &old_context_);
+  }
+
+  void SetUpCodeCave(intptr_t code_addr, intptr_t param_addr) override {
+    new_context_ = old_context_;
+    ContextChangerTraits<is_wow64>::SetUpCodeCave(
+        &new_context_,
+        code_addr, param_addr);
+  }
+
+  bool SwitchCodeCaveContext() override {
+    return ContextChangerTraits<is_wow64>::SetContext(
+        thread_handle_, new_context_);
+  }
+
+  bool SwitchToOriginalContext() override {
+    return ContextChangerTraits<is_wow64>::SetContext(
+        thread_handle_, old_context_);
+  }
+
+ private:
+  typename ContextChangerTraits<is_wow64>::CONTEXT_TYPE old_context_;
+  typename ContextChangerTraits<is_wow64>::CONTEXT_TYPE new_context_;
+  HANDLE thread_handle_;
+};
+
+class RemoteAddrCleaner {
+ public:
+  RemoteAddrCleaner(HANDLE process_handle, void* remote_addr)
+      : process_handle_(process_handle),
+        remote_addr_(remote_addr) { }
+
+  ~RemoteAddrCleaner() {
+    if (remote_addr_)
+      VirtualFreeEx(process_handle_, remote_addr_, 0, MEM_RELEASE);
+  }
+
+ private:
+  HANDLE process_handle_;
+  void* remote_addr_;
+};
+
+std::unique_ptr<ContextChangerBase> ContextChangerBase::Create(
+    bool is_wow64, HANDLE thread_handle) {
+  if (is_wow64) {
+    return std::unique_ptr<ContextChangerBase>(
+        new ContextChanger<true>(thread_handle));
+  } else {
+    return std::unique_ptr<ContextChangerBase>(
+        new ContextChanger<false>(thread_handle));
+  }
+}
 
 DllInjector::DllInjector(
     const boost::filesystem::path& injected_32bit_path,
     const boost::filesystem::path& injected_64bit_path,
-    uint32_t load_library_32_addr,
-    uint64_t load_library_64_addr)
+    const SystemFunctionAddr ldr_load_dll_addr,
+    const SystemFunctionAddr nt_set_event_addr)
     : injected_32bit_path_(injected_32bit_path),
       injected_64bit_path_(injected_64bit_path),
-      load_library_32_addr_(load_library_32_addr),
-      load_library_64_addr_(load_library_64_addr) {
+      ldr_load_dll_addr_(ldr_load_dll_addr),
+      nt_set_event_addr_(nt_set_event_addr) {
+  LOG4CPLUS_ASSERT(logger_, ldr_load_dll_addr_.is_valid());
+  LOG4CPLUS_ASSERT(logger_, nt_set_event_addr_.is_valid());
 }
 
 bool DllInjector::InjectInto(int child_pid, int child_main_thread_id) {
@@ -98,46 +310,52 @@ bool DllInjector::InjectInto(int child_pid, int child_main_thread_id) {
     LOG4CPLUS_ERROR(logger_, "Failed create event, error " << error);
     return false;
   }
-  bool is_64bit = Is64BitProcess(process_handle);
+  const bool is_64bit = Is64BitProcess(process_handle);
+#ifndef _M_AMD64
+  // WOW64 -> x64 injection not supported yet.
+  LOG4CPLUS_ASSERT(logger_, !is_64bit);
+#endif
+
   const boost::filesystem::path& path_to_inject =
       is_64bit ? injected_64bit_path_ : injected_32bit_path_;
   std::wstring path_to_inject_str = path_to_inject.native();
-  const size_t code_cave_len =
+
+  const size_t code_cave_len_native =
       reinterpret_cast<const uint8_t*>(code_cave_end) -
       reinterpret_cast<const uint8_t*>(code_cave);
+  const uint8_t* code_cave_data_native =
+      reinterpret_cast<const uint8_t*>(code_cave);
+#ifdef _M_AMD64
+  const size_t code_cave_len = is_64bit ?
+      code_cave_len_native : sizeof(kCodeCave32);
+  const uint8_t* code_cave_data = is_64bit ?
+      code_cave_data_native : kCodeCave32;
+#else
+  const size_t code_cave_len = code_cave_len_native;
+  const uint8_t* code_cave_data = code_cave_data_native;
+#endif
+
   size_t buffer_len = (path_to_inject_str.length() + 1) * sizeof(WCHAR);
-  buffer_len += sizeof(RemoteData);
+  const size_t kRemoteDataSize =
+      is_64bit ? sizeof(RemoteData64) : sizeof(RemoteData32);
+  buffer_len += kRemoteDataSize;
   buffer_len += code_cave_len;
   // Buffer structure:
   // <code_cave_code>, <RemoteData struct>, <DLL path buffer>
   std::vector<uint8_t> local_buffer(buffer_len);
-  std::copy(
-      reinterpret_cast<const uint8_t*>(code_cave),
-      reinterpret_cast<const uint8_t*>(code_cave) + code_cave_len,
-      local_buffer.begin());
-  RemoteData* local_data = reinterpret_cast<RemoteData*>(
-      local_buffer.data() + code_cave_len);
+  std::copy(code_cave_data,
+            code_cave_data + code_cave_len,
+            local_buffer.begin());
   wcscpy(
       reinterpret_cast<WCHAR*>(
-          local_buffer.data() + sizeof(RemoteData) + code_cave_len),
+          local_buffer.data() + kRemoteDataSize + code_cave_len),
       path_to_inject_str.c_str());
-  local_data->dll.Length = static_cast<USHORT>(
-      path_to_inject_str.length() * sizeof(WCHAR));
-  local_data->dll.MaximumLength = local_data->dll.Length;
-  HMODULE ntdll_module = GetModuleHandleW(L"ntdll.dll");
-  local_data->LdrLoadDll = reinterpret_cast<LdrLoadDllPtr>(
-      GetProcAddress(ntdll_module, "LdrLoadDll"));
-  local_data->NtSetEvent = reinterpret_cast<NtSetEventPtr>(
-      GetProcAddress(ntdll_module, "NtSetEvent"));
-  if (!local_data->LdrLoadDll || !local_data->NtSetEvent) {
-    LOG4CPLUS_ERROR(logger_, "Failed get some API addresses");
-    return false;
-  }
+  HANDLE remote_event_handle = NULL;
   if (!DuplicateHandle(
       GetCurrentProcess(),
       inject_ready_event.Get(),
       process_handle.Get(),
-      &local_data->event,
+      &remote_event_handle,
       0,
       FALSE,
       DUPLICATE_SAME_ACCESS)) {
@@ -151,15 +369,33 @@ bool DllInjector::InjectInto(int child_pid, int child_main_thread_id) {
       buffer_len,
       MEM_COMMIT,
       PAGE_EXECUTE_READWRITE);
+  RemoteAddrCleaner remote_addr_cleaner(process_handle.Get(), remote_addr);
   if (!remote_addr) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(
         logger_, "Failed allocate remote memory, error " << error);
     return false;
   }
-  local_data->dll.Buffer = reinterpret_cast<WCHAR*>(
+  uint8_t* remote_string_addr =
       reinterpret_cast<uint8_t*>(remote_addr) +
-      sizeof(RemoteData) + code_cave_len);
+      code_cave_len + kRemoteDataSize;
+  if (is_64bit) {
+    RemoteData64::FillBuffer(
+        local_buffer.data() + code_cave_len,
+        path_to_inject_str.length(),
+        remote_string_addr,
+        remote_event_handle,
+        ldr_load_dll_addr_.addr_64,
+        nt_set_event_addr_.addr_64);
+  } else {
+    RemoteData32::FillBuffer(
+        local_buffer.data() + code_cave_len,
+        path_to_inject_str.length(),
+        remote_string_addr,
+        remote_event_handle,
+        ldr_load_dll_addr_.addr_32,
+        nt_set_event_addr_.addr_32);
+  }
 
   SIZE_T bytes_written = 0;
   BOOL result = WriteProcessMemory(
@@ -171,51 +407,35 @@ bool DllInjector::InjectInto(int child_pid, int child_main_thread_id) {
   if (!result || bytes_written != buffer_len) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "WriteProcessMemory failed, error " << error);
-    VirtualFreeEx(process_handle.Get(), remote_addr, 0, MEM_RELEASE);
     return false;
   }
-  CONTEXT old_context;
-  old_context.ContextFlags = CONTEXT_ALL;
-  if (!GetThreadContext(thread_handle.Get(), &old_context)) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "GetThreadContext failed, error " << error);
-    VirtualFreeEx(process_handle.Get(), remote_addr, 0, MEM_RELEASE);
-    return false;
-  }
-  CONTEXT new_context = old_context;
 #ifdef _M_AMD64
-  new_context.Rip = reinterpret_cast<intptr_t>(remote_addr);
-  new_context.Rcx = new_context.Rip + code_cave_len;
+  const bool is_wow64 = !is_64bit;
 #else
-  new_context.Eip = reinterpret_cast<intptr_t>(remote_addr);
-  new_context.Ecx = new_context.Eip + code_cave_len;
+  const bool is_wow64 = false;
 #endif
-  if (!SetThreadContext(thread_handle.Get(), &new_context)) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "SetThreadContext failed, error " << error);
-    VirtualFreeEx(process_handle.Get(), remote_addr, 0, MEM_RELEASE);
+
+  std::unique_ptr<ContextChangerBase> context_changer =
+      ContextChangerBase::Create(is_wow64, thread_handle.Get());
+  if (!context_changer->GetOriginalContext())
     return false;
-  }
+  context_changer->SetUpCodeCave(
+      reinterpret_cast<intptr_t>(remote_addr),
+      reinterpret_cast<intptr_t>(remote_addr) + code_cave_len);
+  if (!context_changer->SwitchCodeCaveContext())
+    return false;
   if (ResumeThread(thread_handle.Get()) == -1) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "ResumeThread failed, error " << error);
-    VirtualFreeEx(process_handle.Get(), remote_addr, 0, MEM_RELEASE);
     return false;
   }
   if (WaitForSingleObject(
       inject_ready_event.Get(), INFINITE) != WAIT_OBJECT_0) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "WaitForSingleObject failed, error " << error);
-    VirtualFreeEx(process_handle.Get(), remote_addr, 0, MEM_RELEASE);
     return false;
   }
-  if (!SetThreadContext(thread_handle.Get(), &old_context)) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "SetThreadContext failed, error " << error);
-    VirtualFreeEx(process_handle.Get(), remote_addr, 0, MEM_RELEASE);
+  if (!context_changer->SwitchToOriginalContext())
     return false;
-  }
-
-  VirtualFreeEx(process_handle.Get(), remote_addr, 0, MEM_RELEASE);
   return true;
 }

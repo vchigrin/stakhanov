@@ -4,12 +4,14 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 
 #include "base/filesystem_utils.h"
 #include "base/init_logging.h"
 #include "base/sthook_constants.h"
+#include "base/string_utils.h"
 #include "boost/program_options.hpp"
 #include "boost/property_tree/ptree.hpp"
 #include "boost/property_tree/json_parser.hpp"
@@ -35,34 +37,56 @@
 
 namespace {
 
-const wchar_t kGetLoadLibraryAddrExecutable[] = L"get_load_library_addr32.exe";
+const wchar_t kGetNtDllProcExecutable[] = L"get_ntdll_proc32.exe";
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
-uint32_t GetLoadLibraryAddr32(
-    const boost::filesystem::path& current_executable_dir) {
+DllInjector::SystemFunctionAddr GetAddr(
+    const boost::filesystem::path& current_executable_dir,
+    const std::string& function_name) {
   boost::filesystem::path exe_path =
-      current_executable_dir / kGetLoadLibraryAddrExecutable;
+      current_executable_dir / kGetNtDllProcExecutable;
+
+  std::vector<wchar_t> mutabble_command_line;
+  auto exe_path_str = exe_path.native();
+  std::copy(
+      exe_path_str.begin(),
+      exe_path_str.end(),
+      std::back_inserter(mutabble_command_line));
+  mutabble_command_line.push_back(L' ');
+  auto function_name_wide = base::ToWideFromANSI(function_name);
+  std::copy(
+      function_name_wide.begin(),
+      function_name_wide.end(),
+      std::back_inserter(mutabble_command_line));
+
   PROCESS_INFORMATION pi = { 0 };
   STARTUPINFO si = { 0 };
-  if (!CreateProcessW(exe_path.c_str(), NULL, NULL, NULL, FALSE,
+  DllInjector::SystemFunctionAddr result;
+  if (!CreateProcessW(NULL, mutabble_command_line.data(), NULL, NULL, FALSE,
       0, NULL, NULL, &si, &pi)) {
     DWORD error = GetLastError();
     LOG4CPLUS_FATAL(logger_,
-        ("Failed get LoadLibraryW 32-bit addr."
-         " Process creation failed. Error ") << error);
-    return 0;
+        "Failed get 32-bit addr. Process creation failed. Error " << error);
+    return result;
   }
   WaitForSingleObject(pi.hProcess, INFINITE);
-  DWORD result = 0;
-  if (!GetExitCodeProcess(pi.hProcess, &result)) {
+  DWORD exit_code = 0;
+  if (!GetExitCodeProcess(pi.hProcess, &exit_code)) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(
         logger_, "GetExitCodeProcess failed error " << error);
-    return 0;
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return result;
   }
+  result.addr_32 = exit_code;
   CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
+  // Assumed, that in case we want Stakhanov to work on 64-bit system, that
+  // we will use 64-bit executor.
+  result.addr_64 = reinterpret_cast<uint64_t>(
+      GetProcAddress(GetModuleHandleW(L"ntdll.dll"), function_name.c_str()));
   return result;
 }
 
@@ -227,18 +251,18 @@ int main(int argc, char* argv[]) {
     LOG4CPLUS_FATAL(logger_, "Failed get current executable dir");
     return 1;
   }
-  uint32_t load_library_addr32 = GetLoadLibraryAddr32(current_executable_dir);
-  if (!load_library_addr32) {
+  DllInjector::SystemFunctionAddr ldr_load_dll_addr = GetAddr(
+      current_executable_dir, "LdrLoadDll");
+  DllInjector::SystemFunctionAddr nt_set_event_addr = GetAddr(
+      current_executable_dir, "NtSetEvent");
+  if (!ldr_load_dll_addr.is_valid() || !nt_set_event_addr.is_valid()) {
     return 1;
   }
-  // Assumed, that in case we want Stakhanov to work on 64-bit system, that
-  // we will use 64-bit executor.
-  uint64_t load_library_addr64 = reinterpret_cast<uint64_t>(&LoadLibraryW);
   std::unique_ptr<DllInjector> dll_injector = std::make_unique<DllInjector>(
       current_executable_dir / base::kStHookDllName32Bit,
       current_executable_dir / base::kStHookDllName64Bit,
-      load_library_addr32,
-      load_library_addr64);
+      ldr_load_dll_addr,
+      nt_set_event_addr);
 
   boost::property_tree::ptree config = LoadConfig(variables);
 
