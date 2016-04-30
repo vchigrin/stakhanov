@@ -545,6 +545,7 @@ BOOL CreateProcessImpl(
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
     GetExecutor()->OnSuspendedProcessCreated(
         process_information->dwProcessId,
+        process_information->dwThreadId,
         cache_hit_info.executor_command_id,
         append_std_streams);
   }

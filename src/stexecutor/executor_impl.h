@@ -45,6 +45,7 @@ class ExecutorImpl : public ExecutorIf {
       const std::vector<std::string>& environment) override;
   void OnSuspendedProcessCreated(
       const int32_t child_pid,
+      const int32_t child_main_thread_id,
       const int32_t executor_command_id,
       const bool append_std_streams) override;
   void OnFileDeleted(const std::string& abs_path) override;

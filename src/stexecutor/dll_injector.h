@@ -16,7 +16,7 @@ class DllInjector {
       const boost::filesystem::path& injected_64bit_path,
       uint32_t load_library_32_addr,
       uint64_t load_library_64_addr);
-  bool InjectInto(int child_pid);
+  bool InjectInto(int child_pid, int child_main_thread_id);
 
  private:
   const boost::filesystem::path injected_32bit_path_;

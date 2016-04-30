@@ -31,10 +31,11 @@ service Executor {
 
   void OnSuspendedProcessCreated(
       1:i32 child_pid,
-      2:i32 executor_commmand_id,
+      2:i32 child_main_thread_id,
+      3:i32 executor_commmand_id,
       // If append_std_streams is true - then all writes to std handles
       // must be considered also as writes to std handles of parent
       // process(es).
-      3:bool append_std_streams);
+      4:bool append_std_streams);
   void OnFileDeleted(1:string abs_path);
 }

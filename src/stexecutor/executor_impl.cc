@@ -141,6 +141,7 @@ void ExecutorImpl::Initialize(
 
 void ExecutorImpl::OnSuspendedProcessCreated(
     const int32_t child_pid,
+    const int32_t child_main_thread_id,
     const int32_t executor_command_id,
     const bool append_std_streams) {
   LOG4CPLUS_INFO(logger_, "Created process " << child_pid);
@@ -148,7 +149,7 @@ void ExecutorImpl::OnSuspendedProcessCreated(
   executing_engine_->AssociatePIDWithCommandId(
       child_pid, executor_command_id, append_std_streams, &do_not_track);
   if (!do_not_track) {
-    if (!dll_injector_->InjectInto(child_pid)) {
+    if (!dll_injector_->InjectInto(child_pid, child_main_thread_id)) {
       LOG4CPLUS_ERROR(logger_, "Failed inject dll into process " << child_pid);
     }
   }
