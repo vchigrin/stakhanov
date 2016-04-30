@@ -16,16 +16,17 @@
     ],
     "do_not_track": [
       {
-        "command_line_patterns": [
-          "^.*-nacl-.*\\.exe$"
-        ]
+        "command_line_patterns": [ "^.*vctip\\.exe$" ]
+      },
+      {
+        "command_line_patterns": [ "^.*mspdbsrv\\.exe$" ]
       }
     ]
   },
   "files_storage": {
     "storage_dir": "C:\\test_st_cache",
-    "max_file_size_bytes": 10485760,
-    "safe_to_link_extensions": [".obj", ".pch", ".exe", ".dll"]
+    "max_file_size_bytes": 50000000,
+    "safe_to_link_extensions": [".obj", ".pch", ".exe", ".dll", ".ninja"]
   },
   "files_filtering": {
     "safe_to_drop_output_extensions": [".ilk", ".pyc"],
