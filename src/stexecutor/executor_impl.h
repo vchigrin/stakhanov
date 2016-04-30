@@ -92,6 +92,7 @@ class ExecutorImpl : public ExecutorIf {
   // Child-Parent std streams sharing. So we use mutex to protect it.
   std::mutex std_handles_lock_;
   boost::filesystem::path dump_env_dir_;
+  bool files_infos_filled_;
 };
 
 #endif  // STEXECUTOR_EXECUTOR_IMPL_H_

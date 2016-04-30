@@ -64,7 +64,8 @@ ExecutorImpl::ExecutorImpl(
     : dll_injector_(dll_injector),
       executing_engine_(executing_engine),
       executor_factory_(executor_factory),
-      files_filter_(files_filter) {
+      files_filter_(files_filter),
+      files_infos_filled_(false) {
 }
 
 bool ExecutorImpl::HookedCreateFile(
@@ -233,6 +234,7 @@ void ExecutorImpl::FillFileInfos() {
     }
     command_info_.removed_rel_paths.push_back(rel_path);
   }
+  files_infos_filled_ = true;
 }
 
 void ExecutorImpl::OnBeforeProcessCreate(
@@ -322,6 +324,11 @@ void ExecutorImpl::FillExitCode() {
   // (on many levels) of stlaunch can be retrieved from cache).
   if (command_info_.command_id == ExecutingEngine::kRootCommandId)
     return;
+  if (!files_infos_filled_) {
+    LOG4CPLUS_WARN(logger_, "Warning, ExitProcess() track failed.");
+    FillFileInfos();
+  }
+
   DWORD exit_code = 0;
   LOG4CPLUS_ASSERT(logger_, process_handle_.IsValid());
   while (true) {
