@@ -547,10 +547,9 @@ BOOL CreateProcessImpl(
         process_information->dwProcessId,
         process_information->dwThreadId,
         cache_hit_info.executor_command_id,
-        append_std_streams);
+        append_std_streams,
+        request_suspended);
   }
-  if (!request_suspended)
-    ResumeThread(process_information->hThread);
   return result;
 }
 

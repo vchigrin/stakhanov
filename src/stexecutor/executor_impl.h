@@ -47,7 +47,8 @@ class ExecutorImpl : public ExecutorIf {
       const int32_t child_pid,
       const int32_t child_main_thread_id,
       const int32_t executor_command_id,
-      const bool append_std_streams) override;
+      const bool append_std_streams,
+      const bool leave_suspended) override;
   void OnFileDeleted(const std::string& abs_path) override;
   void OnBeforeExitProcess() override;
   void FillExitCode();

@@ -36,6 +36,7 @@ service Executor {
       // If append_std_streams is true - then all writes to std handles
       // must be considered also as writes to std handles of parent
       // process(es).
-      4:bool append_std_streams);
+      4:bool append_std_streams,
+      5:bool leave_suspended);
   void OnFileDeleted(1:string abs_path);
 }

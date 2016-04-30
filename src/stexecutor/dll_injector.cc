@@ -91,6 +91,11 @@ extern "C" static void _fastcall code_cave(const RemoteDataNative* data) {
       NULL, &flags, &data->dll_name, &module);
   reinterpret_cast<NtSetEventPtr>(data->nt_set_event)(
       reinterpret_cast<HANDLE>(data->event), NULL);
+  // TODO(vchigrin): May be we can do better here: do pusha
+  // in the beginning of the cave, popa at the end, and then just jmp
+  // to the proper address... That is a bit of extra programming,
+  // but may speed up us if actual process creator did not want
+  // suspended main thread (that is most probably the most popular case).
   while (true) {}
 }
 extern "C" static void code_cave_end() { }
@@ -284,7 +289,8 @@ DllInjector::DllInjector(
   LOG4CPLUS_ASSERT(logger_, nt_set_event_addr_.is_valid());
 }
 
-bool DllInjector::InjectInto(int child_pid, int child_main_thread_id) {
+bool DllInjector::InjectInto(
+    int child_pid, int child_main_thread_id, bool leave_suspended) {
   base::ScopedHandle process_handle(::OpenProcess(
       PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_DUP_HANDLE |
           PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION,
@@ -434,6 +440,13 @@ bool DllInjector::InjectInto(int child_pid, int child_main_thread_id) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "WaitForSingleObject failed, error " << error);
     return false;
+  }
+  if (leave_suspended) {
+    if (SuspendThread(thread_handle.Get()) == -1) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "SuspendThread failed, error " << error);
+      return false;
+    }
   }
   if (!context_changer->SwitchToOriginalContext())
     return false;
