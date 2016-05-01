@@ -28,7 +28,20 @@ ProcessManagementConfig::ProcessManagementConfig(
 }
 
 bool ProcessManagementConfig::ShouldStickToParent(
-    const ProcessCreationRequest& request) const {
+    const ProcessCreationRequest& request,
+    const ProcessCreationRequest& parent_request) const {
+  // HACK: Cygwin executables respawns themselves with exactly same
+  // command line to emulate "fork" call on Windows.
+  // They distinguish child copy by using undocumented STARTUPINFO structure
+  // fields.
+  // We should always treate such commands as "stick to parent"
+  // to avoid weird problems - since behavior of these strange "childs"
+  // is not same as parent.
+  if (request.GetHash() == parent_request.GetHash())
+    return true;
+  // TODO(vchigrin): Allow JSON config add riles based on exe path.
+  if (request.exe_path().filename() == L"cc1plus.exe")
+    return true;
   return MatchesAnyPattern(request, stick_to_parent_patterns_);
 }
 

@@ -150,7 +150,9 @@ void ExecutingEngine::CompleteCumulativeResponse(
   std::unique_ptr<rules_mappers::CachedExecutionResponse> execution_response =
       builder->BuildExecutionResponse();
   CumulativeExecutionResponseBuilder* parent = builder->ancestor();
+  ProcessCreationRequest parent_request;
   if (parent) {
+    parent_request = parent->process_creation_request();
     if (builder->is_failed()) {
       parent->MarkChildCommandFailed(builder->command_id());
     } else {
@@ -161,7 +163,8 @@ void ExecutingEngine::CompleteCumulativeResponse(
     if (parent->IsComplete())
       CompleteCumulativeResponse(parent);
   }
-  if (process_management_config_->ShouldStickToParent(request)) {
+  if (process_management_config_->ShouldStickToParent(
+        request, parent_request)) {
     LOG4CPLUS_INFO(
         logger_,
         "Don't save results - stick to parent command " << request);

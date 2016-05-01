@@ -12,6 +12,12 @@
           "^.*python(\\.exe|\\.bat)?$",
           "^.*rcssmin.py$"
         ]
+      },
+      {
+        "command_line_patterns": [ "^.*[/\\\\]as.exe$" ]
+      },
+      {
+        "command_line_patterns": [ "^.*-nacl-as.exe$" ]
       }
     ],
     "do_not_track": [
@@ -26,7 +32,7 @@
   "files_storage": {
     "storage_dir": "C:\\test_st_cache",
     "max_file_size_bytes": 50000000,
-    "safe_to_link_extensions": [".obj", ".pch", ".exe", ".dll", ".ninja"]
+    "safe_to_link_extensions": [".obj", ".pch", ".exe", ".dll", ".ninja", ".o", ".d"]
   },
   "files_filtering": {
     "safe_to_drop_output_extensions": [".ilk", ".pyc"],

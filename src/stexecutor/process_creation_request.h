@@ -11,6 +11,7 @@
 #include "boost/serialization/nvp.hpp"
 #include "boost/serialization/serialization.hpp"
 #include "boost/serialization/vector.hpp"
+#include "stexecutor/rules_mappers/rules_hashing.h"
 
 // NOTE: all passed in paths must already be normalized,
 // and have already stripped build_root directory.
@@ -39,6 +40,9 @@ class ProcessCreationRequest {
     return environment_hash_;
   }
 
+  // TODO(vchigrin): Move out from rules_mappers namespace.
+  const rules_mappers::HashValue& GetHash() const;
+
  private:
   friend class boost::serialization::access;
   template<class Archive>
@@ -53,6 +57,8 @@ class ProcessCreationRequest {
   boost::filesystem::path startup_directory_;
   std::vector<std::string> command_line_;
   std::string environment_hash_;
+  mutable rules_mappers::HashValue hash_value_;
+  mutable bool hash_value_computed_;
 };
 
 // For ease of logging.

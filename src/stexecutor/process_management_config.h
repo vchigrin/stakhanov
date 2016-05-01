@@ -19,7 +19,9 @@ class ProcessCreationRequest;
 class ProcessManagementConfig {
  public:
   explicit ProcessManagementConfig(const boost::property_tree::ptree& config);
-  bool ShouldStickToParent(const ProcessCreationRequest& request) const;
+  bool ShouldStickToParent(
+      const ProcessCreationRequest& request,
+      const ProcessCreationRequest& parent_request) const;
   bool ShouldDoNotTrack(const ProcessCreationRequest& request) const;
 
  private:
