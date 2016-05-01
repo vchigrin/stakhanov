@@ -473,7 +473,6 @@ BOOL CreateProcessImpl(
     STARTUPINFO_TYPE* startup_info,
     LPPROCESS_INFORMATION process_information) {
   bool request_suspended = (creation_flags & CREATE_SUSPENDED) != 0;
-  creation_flags |= CREATE_SUSPENDED;
 
   std::string exe_path;
   if (application_name) {
@@ -524,6 +523,7 @@ BOOL CreateProcessImpl(
         startup_info->hStdError,
         process_information);
   } else {
+    creation_flags |= CREATE_SUSPENDED;
     result = actual_function(
         application_name,
         command_line,
