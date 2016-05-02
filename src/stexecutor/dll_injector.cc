@@ -48,6 +48,7 @@ struct RemoteData {
   ptr_size_uint ldr_load_dll;
   ptr_size_uint nt_set_event;
   ptr_size_uint event;
+  ptr_size_uint completed_flag;
 
   static void FillBuffer(
       void* buffer_addr,
@@ -66,6 +67,7 @@ struct RemoteData {
     local_data->ldr_load_dll = ldr_load_dll_addr;
     local_data->nt_set_event = nt_set_event_addr;
     local_data->event = reinterpret_cast<ptr_size_uint>(remote_event_handle);
+    local_data->completed_flag = 0;
   }
 };
 
@@ -83,7 +85,7 @@ using RemoteDataNative = RemoteData32;
 #pragma runtime_checks("", off)
 #pragma check_stack(off)
 #pragma strict_gs_check(push, off)
-extern "C" static void _fastcall code_cave(const RemoteDataNative* data) {
+extern "C" static void _fastcall code_cave(RemoteDataNative* data) {
   HMODULE module;
   ULONG flags = LOAD_WITH_ALTERED_SEARCH_PATH;
 
@@ -96,6 +98,7 @@ extern "C" static void _fastcall code_cave(const RemoteDataNative* data) {
   // to the proper address... That is a bit of extra programming,
   // but may speed up us if actual process creator did not want
   // suspended main thread (that is most probably the most popular case).
+  data->completed_flag = 1;
   while (true) {}
 }
 extern "C" static void code_cave_end() { }
@@ -122,6 +125,7 @@ static const uint8_t kCodeCave32[] = {
   0x6A, 0x00,  //              push 0
   0xFF, 0x76, 0x10,  //        push dword ptr [esi+10h]
   0xFF, 0xD0,  //              call eax
+  0xC7, 0x46, 0x14, 0x01, 0x00, 0x00, 0x00,  // mov dword ptr [esi+14h], 1
   0xEB, 0xFE,  //              jmp  <current_eip>
 };
 #endif
@@ -315,8 +319,8 @@ DllInjector::DllInjector(
 bool DllInjector::InjectInto(
     int child_pid, int child_main_thread_id, bool leave_suspended) {
   base::ScopedHandle process_handle(::OpenProcess(
-      PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_DUP_HANDLE |
-          PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION,
+      PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_READ |
+          PROCESS_DUP_HANDLE |PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION,
       FALSE, child_pid));
   if (!process_handle.IsValid()) {
     DWORD error = GetLastError();
@@ -398,7 +402,7 @@ bool DllInjector::InjectInto(
       buffer_len,
       MEM_COMMIT,
       PAGE_EXECUTE_READWRITE);
-  RemoteAddrCleaner remote_addr_cleaner(process_handle.Get(), remote_addr);
+  // RemoteAddrCleaner remote_addr_cleaner(process_handle.Get(), remote_addr);
   if (!remote_addr) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(
@@ -463,6 +467,41 @@ bool DllInjector::InjectInto(
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "WaitForSingleObject failed, error " << error);
     return false;
+  }
+  // Use busy loop to finish wait operation. Need to avoid situations:
+  // 1. Thread calls NtSetEvent
+  // 2. Event object becomes signaled in kernel
+  // 3. We call NtSuspendThread
+  // 4. OS realizes that thread in kernel mode and assumes it "suspended"
+  // 5. We set context and resume thread
+  // 6. OS overwrites eax value "as result of NtSetEvent" call, and then
+  // returns to UM, having all fields of context proper EXCEPT eax.
+  // This is problem since ndll.dll thread initialization code assumes
+  // eax will hold entry point address.
+  static_assert(
+      sizeof(RemoteData64) >= sizeof(RemoteData32),
+      "RemoteData buffer size assumption is wrong");
+  std::vector<uint8_t> read_buffer(sizeof(RemoteData64), 0);
+  while (true) {
+    SIZE_T bytes_read = 0;
+    BOOL result = ReadProcessMemory(
+        process_handle.Get(),
+        static_cast<uint8_t*>(remote_addr) + code_cave_len,
+        read_buffer.data(),
+        read_buffer.size(),
+        &bytes_read);
+    if (!result || bytes_read != read_buffer.size()) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "ReadProcessMemory failed, error " << error);
+      return false;
+    }
+    if (is_64bit) {
+      if (reinterpret_cast<RemoteData64*>(read_buffer.data())->completed_flag)
+        break;
+    } else {
+      if (reinterpret_cast<RemoteData32*>(read_buffer.data())->completed_flag)
+        break;
+    }
   }
   // We must susped thread before context switching, since changing
   // context of running thread may have unpredictable results.
