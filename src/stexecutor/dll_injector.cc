@@ -152,6 +152,15 @@ struct ContextChangerTraits<false> {
     return true;
   }
 
+  static bool SuspendThread(HANDLE thread_handle) {
+    if (::SuspendThread(thread_handle) == -1) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "SuspendThread failed, error " << error);
+      return false;
+    }
+    return true;
+  }
+
   static void SetUpCodeCave(
       CONTEXT_TYPE* ctx,
       intptr_t code_addr,
@@ -192,6 +201,15 @@ struct ContextChangerTraits<true> {
     return true;
   }
 
+  static bool SuspendThread(HANDLE thread_handle) {
+    if (Wow64SuspendThread(thread_handle) == -1) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "Wow64SuspendThread failed, error " << error);
+      return false;
+    }
+    return true;
+  }
+
   static void SetUpCodeCave(
       CONTEXT_TYPE* ctx,
       intptr_t code_addr,
@@ -207,6 +225,7 @@ class ContextChangerBase {
   virtual void SetUpCodeCave(intptr_t code_addr, intptr_t param_addr) = 0;
   virtual bool SwitchCodeCaveContext() = 0;
   virtual bool SwitchToOriginalContext() = 0;
+  virtual bool SuspendThread() = 0;
 
   static std::unique_ptr<ContextChangerBase> Create(
       bool is_wow64, HANDLE thread_handle);
@@ -241,6 +260,10 @@ class ContextChanger : public ContextChangerBase {
   bool SwitchToOriginalContext() override {
     return ContextChangerTraits<is_wow64>::SetContext(
         thread_handle_, old_context_);
+  }
+
+  bool SuspendThread() override {
+    return ContextChangerTraits<is_wow64>::SuspendThread(thread_handle_);
   }
 
  private:
@@ -445,11 +468,8 @@ bool DllInjector::InjectInto(
   // context of running thread may have unpredictable results.
   // In particular, context may not be changed instantly, and after
   // VirtualFreeEx process will crash due to execution on invalid address.
-  if (SuspendThread(thread_handle.Get()) == -1) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "SuspendThread failed, error " << error);
+  if (!context_changer->SuspendThread())
     return false;
-  }
   if (!context_changer->SwitchToOriginalContext())
     return false;
   if (!leave_suspended) {
