@@ -58,6 +58,10 @@ bool ProcessManagementConfig::MatchesAnyPattern(
 
 bool ProcessManagementConfig::ShouldDoNotTrack(
     const ProcessCreationRequest& request) const {
+  // TODO(vchigrin): Allow JSON config add riles based on exe path.
+  // unfortunatelly, vctip.exe has empty command line.
+  if (request.exe_path().filename() == L"vctip.exe")
+    return true;
   return MatchesAnyPattern(request, do_not_track_patterns_);
 }
 

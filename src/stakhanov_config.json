@@ -22,9 +22,6 @@
     ],
     "do_not_track": [
       {
-        "command_line_patterns": [ "^.*vctip\\.exe$" ]
-      },
-      {
         "command_line_patterns": [ "^.*mspdbsrv\\.exe$" ]
       }
     ]
