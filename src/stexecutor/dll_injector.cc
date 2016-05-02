@@ -441,14 +441,23 @@ bool DllInjector::InjectInto(
     LOG4CPLUS_ERROR(logger_, "WaitForSingleObject failed, error " << error);
     return false;
   }
-  if (leave_suspended) {
-    if (SuspendThread(thread_handle.Get()) == -1) {
-      DWORD error = GetLastError();
-      LOG4CPLUS_ERROR(logger_, "SuspendThread failed, error " << error);
-      return false;
-    }
+  // We must susped thread before context switching, since changing
+  // context of running thread may have unpredictable results.
+  // In particular, context may not be changed instantly, and after
+  // VirtualFreeEx process will crash due to execution on invalid address.
+  if (SuspendThread(thread_handle.Get()) == -1) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "SuspendThread failed, error " << error);
+    return false;
   }
   if (!context_changer->SwitchToOriginalContext())
     return false;
+  if (!leave_suspended) {
+    if (ResumeThread(thread_handle.Get()) == -1) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "ResumeThread failed, error " << error);
+      return false;
+    }
+  }
   return true;
 }
