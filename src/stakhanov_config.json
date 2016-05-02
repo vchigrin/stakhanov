@@ -32,7 +32,7 @@
     "safe_to_link_extensions": [".obj", ".pch", ".exe", ".dll", ".ninja", ".o", ".d"]
   },
   "files_filtering": {
-    "safe_to_drop_output_extensions": [".ilk", ".pyc"],
-    "safe_to_drop_input_extensions": [".pyc"]
+    "safe_to_drop_output_extensions": [".ilk", ".pyc", ".pyo"],
+    "safe_to_drop_input_extensions": [".pyc", ".pyo"]
   }
 }
