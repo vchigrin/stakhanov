@@ -40,7 +40,8 @@ bool ProcessManagementConfig::ShouldStickToParent(
   if (request.GetHash() == parent_request.GetHash())
     return true;
   // TODO(vchigrin): Allow JSON config add riles based on exe path.
-  if (request.exe_path().filename() == L"cc1plus.exe")
+  auto file_name = request.exe_path().filename();
+  if (file_name == L"cc1plus.exe" || file_name == "cc1.exe")
     return true;
   return MatchesAnyPattern(request, stick_to_parent_patterns_);
 }
