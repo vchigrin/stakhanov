@@ -163,7 +163,7 @@ ExecutorIf* GetExecutor() {
   if (!g_executor) {
     try {
       boost::shared_ptr<TSocket> socket(new TSocket(
-          "127.0.0.1", sthook::GetExecutorPort()));
+          "localhost", sthook::GetExecutorPort()));
       boost::shared_ptr<TBufferedTransport> transport(
           new TBufferedTransport(socket));
       boost::shared_ptr<TBinaryProtocol> protocol(
