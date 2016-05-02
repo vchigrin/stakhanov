@@ -59,6 +59,7 @@ DllInjector::SystemFunctionAddr GetAddr(
       function_name_wide.begin(),
       function_name_wide.end(),
       std::back_inserter(mutabble_command_line));
+  mutabble_command_line.push_back(L'\0');
 
   PROCESS_INFORMATION pi = { 0 };
   STARTUPINFO si = { 0 };
@@ -256,6 +257,7 @@ int main(int argc, char* argv[]) {
   DllInjector::SystemFunctionAddr nt_set_event_addr = GetAddr(
       current_executable_dir, "NtSetEvent");
   if (!ldr_load_dll_addr.is_valid() || !nt_set_event_addr.is_valid()) {
+    LOG4CPLUS_FATAL(logger_, "Failed get ntdll function addresses");
     return 1;
   }
   std::unique_ptr<DllInjector> dll_injector = std::make_unique<DllInjector>(
@@ -270,8 +272,10 @@ int main(int argc, char* argv[]) {
       new FilesystemFilesStorage(config));
   std::unique_ptr<rules_mappers::RulesMapper> rules_mapper =
       CreateRulesMapper(variables);
-  if (!rules_mapper)
+  if (!rules_mapper) {
+    LOG4CPLUS_FATAL(logger_, "Failed create rules mapper");
     return 1;
+  }
   std::unique_ptr<BuildDirectoryState> build_dir_state(
       new BuildDirectoryState(build_dir_path));
   std::unique_ptr<ExecutingEngine> executing_engine(new ExecutingEngine(
