@@ -538,8 +538,12 @@ BOOL CreateProcessImpl(
   if (!result)
     return result;
 
-  const bool append_std_streams = (
+  bool append_std_streams = (
       startup_info->dwFlags & STARTF_USESTDHANDLES) == 0;
+  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+  if (instance) {
+    append_std_streams &= instance->AreOriginalHandlesActive();
+  }
   if (!cache_hit_info.cache_hit) {
     // Cache hits should not go through all pipeline with
     // injecting interceptor DLLs, tracking files, etc.

@@ -52,17 +52,27 @@ class StdHandlesHolder::HolderImpl {
 // static
 void StdHandlesHolder::Initialize() {
   instance_ = new StdHandlesHolder();
-  instance_->std_output_holder_->SetStdHandle(
-      StdHandles::StdOutput,
-      GetStdHandle(STD_OUTPUT_HANDLE));
-  instance_->std_error_holder_->SetStdHandle(
-      StdHandles::StdError,
+  instance_->Initialize(
+      GetStdHandle(STD_OUTPUT_HANDLE),
       GetStdHandle(STD_ERROR_HANDLE));
+}
+
+void StdHandlesHolder::Initialize(
+    HANDLE original_output_handle, HANDLE original_error_handle) {
+  std::lock_guard<std::mutex> lock(instance_lock_);
+  original_output_handle_ = original_output_handle;
+  original_error_handle_ = original_error_handle;
+  std_output_holder_->SetStdHandle(
+      StdHandles::StdOutput, original_output_handle);
+  std_error_holder_->SetStdHandle(
+      StdHandles::StdError, original_error_handle);
 }
 
 StdHandlesHolder::StdHandlesHolder()
   : std_output_holder_(new HolderImpl(StdHandles::StdOutput)),
-    std_error_holder_(new HolderImpl(StdHandles::StdError)) {
+    std_error_holder_(new HolderImpl(StdHandles::StdError)),
+    original_output_handle_(NULL),
+    original_error_handle_(NULL) {
 }
 
 StdHandlesHolder::~StdHandlesHolder() {}
@@ -92,4 +102,12 @@ void StdHandlesHolder::MarkHandleClosed(HANDLE handle) {
   std::lock_guard<std::mutex> lock(instance_lock_);
   std_output_holder_->MarkHandleClosed(handle);
   std_error_holder_->MarkHandleClosed(handle);
+}
+
+bool StdHandlesHolder::AreOriginalHandlesActive() {
+  std::lock_guard<std::mutex> lock(instance_lock_);
+  StdHandles::type handle_type;
+  return
+      std_output_holder_->IsStdHandle(original_output_handle_, &handle_type) &&
+      std_error_holder_->IsStdHandle(original_error_handle_, &handle_type);
 }

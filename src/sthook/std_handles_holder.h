@@ -21,10 +21,15 @@ class StdHandlesHolder {
   void SetStdHandle(StdHandles::type handle_type, HANDLE handle);
   void MarkDuplicatedHandle(HANDLE existed_handle, HANDLE new_handle);
   void MarkHandleClosed(HANDLE handle);
+  // Returns true if handles, that were active at process creation
+  // (stdout and stderr) are still present in set of handles representing
+  // std streams. Need for tracking "append std streams" flag.
+  bool AreOriginalHandlesActive();
 
  private:
   StdHandlesHolder();
   ~StdHandlesHolder();
+  void Initialize(HANDLE original_output_handle, HANDLE original_error_handle);
 
   static StdHandlesHolder* instance_;
   class HolderImpl;
@@ -32,6 +37,8 @@ class StdHandlesHolder {
   std::mutex instance_lock_;
   std::unique_ptr<HolderImpl> std_output_holder_;
   std::unique_ptr<HolderImpl> std_error_holder_;
+  HANDLE original_output_handle_;
+  HANDLE original_error_handle_;
 };
 
 #endif  // STHOOK_STD_HANDLES_HOLDER_H_
