@@ -8,16 +8,6 @@
 
 namespace sthook {
 
-static const int kDefaultExecutorPort = 9092;
-
-int GetExecutorPort() {
-  const char* port_var = getenv("ST_PORT");
-  if (!port_var)
-    return kDefaultExecutorPort;
-  int result = atoi(port_var);
-  if (result <= 0)
-    result = kDefaultExecutorPort;
-  return result;
-}
+const char kExecutorPipeName[] = "stakhanov-pipe";
 
 }  // namespace sthook

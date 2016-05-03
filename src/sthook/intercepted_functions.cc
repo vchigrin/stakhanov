@@ -29,7 +29,7 @@
 #include "stproxy/stproxy_communication.h"
 #include "thrift/protocol/TBinaryProtocol.h"
 #include "thrift/transport/TBufferTransports.h"
-#include "thrift/transport/TSocket.h"
+#include "thrift/transport/TPipe.h"
 
 namespace {
 
@@ -156,14 +156,13 @@ ExecutorIf* GetExecutor() {
   using apache::thrift::TException;
   using apache::thrift::protocol::TBinaryProtocol;
   using apache::thrift::transport::TBufferedTransport;
-  using apache::thrift::transport::TSocket;
+  using apache::thrift::transport::TPipe;
 
   static std::unique_ptr<ExecutorClient> g_executor;
   static bool g_initialize_finished;
   if (!g_executor) {
     try {
-      boost::shared_ptr<TSocket> socket(new TSocket(
-          "localhost", sthook::GetExecutorPort()));
+      boost::shared_ptr<TPipe> socket(new TPipe(sthook::kExecutorPipeName));
       boost::shared_ptr<TBufferedTransport> transport(
           new TBufferedTransport(socket));
       boost::shared_ptr<TBinaryProtocol> protocol(

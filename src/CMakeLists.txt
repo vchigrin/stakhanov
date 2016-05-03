@@ -81,6 +81,9 @@ set(BISON_EXECUTABLE
     "${CMAKE_SOURCE_DIR}/third_party/win_flex_bison/win_bison.exe")
 set(OLD_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
 set(CMAKE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/thrift")
+# Thrift named pipes server is too noisy.
+add_definitions(-DTHRIFT_SQUELCH_CONSOLE_OUTPUT)
+
 add_subdirectory(third_party/thrift)
 set(CMAKE_SOURCE_DIR "${OLD_SOURCE_DIR}")
 

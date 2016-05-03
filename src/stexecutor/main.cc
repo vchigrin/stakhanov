@@ -33,7 +33,7 @@
 #include "third_party/redisclient/src/redisclient/redissyncclient.h"
 #include "thrift/server/TThreadedServer.h"
 #include "thrift/transport/TBufferTransports.h"
-#include "thrift/transport/TServerSocket.h"
+#include "thrift/transport/TPipeServer.h"
 
 namespace {
 
@@ -184,7 +184,7 @@ boost::property_tree::ptree LoadConfig(
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  using apache::thrift::transport::TServerSocket;
+  using apache::thrift::transport::TPipeServer;
   using apache::thrift::transport::TBufferedTransportFactory;
   using apache::thrift::protocol::TBinaryProtocolFactory;
   base::InitLogging(true);
@@ -296,7 +296,7 @@ int main(int argc, char* argv[]) {
   }
   g_server = std::make_unique<ServerType>(
       boost::make_shared<ExecutorProcessorFactory>(executor_factory),
-      boost::make_shared<TServerSocket>(sthook::GetExecutorPort()),
+      boost::make_shared<TPipeServer>(sthook::kExecutorPipeName),
       boost::make_shared<TBufferedTransportFactory>(),
       boost::make_shared<TBinaryProtocolFactory>());
   std::cout

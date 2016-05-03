@@ -6,7 +6,7 @@
 #define STHOOK_STHOOK_COMMUNICATION_H_
 
 namespace sthook {
-int GetExecutorPort();
+extern const char kExecutorPipeName[];
 }
 
 #endif  // STHOOK_STHOOK_COMMUNICATION_H_
