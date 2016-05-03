@@ -36,6 +36,15 @@ bool LinkOrCopyFile(
   boost::system::error_code remove_error, link_error;
   // Delete old file, if any.
   boost::filesystem::remove(dst_path, remove_error);
+#ifdef _WINDOWS
+  // Strange, but Windows will disallow remove ANY hardlink to file if it
+  // open through ANY OTHER hardlink. Just report true, since in other case
+  // we'll have problems with storing same file content when some process
+  // in build system did not released file handle yet.
+  if (remove_error.value() == ERROR_SHARING_VIOLATION) {
+    return true;
+  }
+#endif
   // It is not always safe to link files, since build process
   // may change outputs of previous commands.
   if (is_safe_to_link) {
@@ -51,7 +60,7 @@ bool LinkOrCopyFile(
       boost::filesystem::copy_option::overwrite_if_exists,
       link_error);
   if (link_error) {
-    LOG4CPLUS_WARN(
+    LOG4CPLUS_ERROR(
         logger_, "Both copy and hard_link failed for " << src_path.c_str()
             << " Error code " << link_error);
     return false;
