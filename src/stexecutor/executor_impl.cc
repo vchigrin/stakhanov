@@ -179,6 +179,7 @@ void ExecutorImpl::OnBeforeExitProcess() {
 }
 
 void ExecutorImpl::FillFileInfos() {
+  files_infos_filled_ = true;
   BuildDirectoryState* build_dir_state = executing_engine_->build_dir_state();
   FilesStorage* files_storage = executing_engine_->files_storage();
   for (const boost::filesystem::path& output_path : output_files_) {
@@ -234,7 +235,6 @@ void ExecutorImpl::FillFileInfos() {
     }
     command_info_.removed_rel_paths.push_back(rel_path);
   }
-  files_infos_filled_ = true;
 }
 
 void ExecutorImpl::OnBeforeProcessCreate(
@@ -325,7 +325,10 @@ void ExecutorImpl::FillExitCode() {
   if (command_info_.command_id == ExecutingEngine::kRootCommandId)
     return;
   if (!files_infos_filled_) {
-    LOG4CPLUS_WARN(logger_, "Warning, ExitProcess() track failed.");
+    LOG4CPLUS_WARN(
+        logger_,
+        "Warning, ExitProcess() track failed. for "
+            << command_info_.command_id);
     FillFileInfos();
   }
 
