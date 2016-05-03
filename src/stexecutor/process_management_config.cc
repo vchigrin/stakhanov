@@ -41,8 +41,10 @@ bool ProcessManagementConfig::ShouldStickToParent(
     return true;
   // TODO(vchigrin): Allow JSON config add riles based on exe path.
   auto file_name = request.exe_path().filename();
-  if (file_name == L"cc1plus.exe" || file_name == "cc1.exe")
+  if (file_name == L"cc1plus.exe" ||
+      file_name == "cc1.exe" || file_name == "collect2.exe") {
     return true;
+  }
   return MatchesAnyPattern(request, stick_to_parent_patterns_);
 }
 
