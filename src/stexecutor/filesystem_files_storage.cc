@@ -33,37 +33,44 @@ bool LinkOrCopyFile(
     const boost::filesystem::path& src_path,
     const boost::filesystem::path& dst_path,
     bool is_safe_to_link) {
-  boost::system::error_code remove_error, link_error;
-  // Delete old file, if any.
-  boost::filesystem::remove(dst_path, remove_error);
-#ifdef _WINDOWS
-  // Strange, but Windows will disallow remove ANY hardlink to file if it
-  // open through ANY OTHER hardlink. Just report true, since in other case
-  // we'll have problems with storing same file content when some process
-  // in build system did not released file handle yet.
-  if (remove_error.value() == ERROR_SHARING_VIOLATION) {
-    return true;
-  }
-#endif
-  // It is not always safe to link files, since build process
-  // may change outputs of previous commands.
-  if (is_safe_to_link) {
-    boost::filesystem::create_hard_link(
+  boost::system::error_code error;
+  bool tried_remove = false;
+  while (true) {
+    // It is not always safe to link files, since build process
+    // may change outputs of previous commands.
+    if (is_safe_to_link) {
+      boost::filesystem::create_hard_link(
+          src_path, dst_path,
+          error);
+      if (!error)
+        return true;
+    }
+    boost::filesystem::copy_file(
         src_path, dst_path,
-        link_error);
-    if (!link_error) {
+        boost::filesystem::copy_option::overwrite_if_exists,
+        error);
+    if (!error)
+      return true;
+
+    if (tried_remove) {
+      LOG4CPLUS_ERROR(
+          logger_, "Both copy and hard_link failed for " << src_path.c_str()
+              << " Error code " << error);
+      return false;
+    }
+    // Delete file and try again.
+    boost::system::error_code remove_error;
+    tried_remove = true;
+    boost::filesystem::remove(dst_path, error);
+#ifdef _WINDOWS
+    // Strange, but Windows will disallow remove ANY hardlink to file if it
+    // open through ANY OTHER hardlink. Just report true, since in other case
+    // we'll have problems with storing same file content when some process
+    // in build system did not released file handle yet.
+    if (error.value() == ERROR_SHARING_VIOLATION) {
       return true;
     }
-  }
-  boost::filesystem::copy_file(
-      src_path, dst_path,
-      boost::filesystem::copy_option::overwrite_if_exists,
-      link_error);
-  if (link_error) {
-    LOG4CPLUS_ERROR(
-        logger_, "Both copy and hard_link failed for " << src_path.c_str()
-            << " Error code " << link_error);
-    return false;
+#endif
   }
   return true;
 }
