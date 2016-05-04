@@ -59,6 +59,10 @@ bool BuildDirectoryState::TakeFileFromStorage(
   content_id_cache_.erase(rel_path);
   if (!files_storage->GetFileFromStorage(storage_id, abs_path))
     return false;
+  // Take advantage of the fact that FilesystmFilesStorage uses
+  // same hash algorithm as we do.
+  // TODO(vchigrin): Make thie assumption clearer.
+  content_id_cache_.insert(std::make_pair(rel_path, storage_id));
   // We must update modification time of file (files storage may not do this
   // if it uses hard links). Without it some commands,
   // like used by NaCL toolcain in chromium build, will fail.
