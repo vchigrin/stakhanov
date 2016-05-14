@@ -4,7 +4,7 @@ vars = {
   "thrift_revision": "53dd39833a08ce33582e5ff31fa18bb4735d6731",
   # Crypto++ master, > 5.6.3. CMake build is not went to any release yet,
   # replace it once any stable release with CMake build appears.
-  "cryptopp_revision": "80134f2ef4f7f3f4e9c39e1a8098fb8ff2a06ca4",
+  "cryptopp_revision": "a96d60e4e8d9646e099f2009f9a9a5df2d3c1803",
   "redisclient_revision": "4c9d3fb52125b65bdc31ba1673cc563eb57f32a7",
 }
 
