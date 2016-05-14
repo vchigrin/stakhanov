@@ -28,7 +28,7 @@ class ExecutorImpl : public ExecutorIf {
       ExecutingEngine* executing_engine,
       ExecutorFactory* executor_factory,
       FilesFilter* outputs_filter);
-  void Initialize(
+  bool Initialize(
       const int32_t current_pid, const bool is_root_process) override;
   bool HookedCreateFile(
       const std::string& abs_path, const bool for_writing) override;

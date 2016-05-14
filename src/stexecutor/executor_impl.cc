@@ -138,7 +138,7 @@ void ExecutorImpl::HookedRenameFile(
     output_files_.insert(norm_new_path);
 }
 
-void ExecutorImpl::Initialize(
+bool ExecutorImpl::Initialize(
     const int32_t current_pid, const bool is_root_process) {
   process_handle_ = base::ScopedHandle(
       OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE,
@@ -147,6 +147,7 @@ void ExecutorImpl::Initialize(
     DWORD error_code = GetLastError();
     LOG4CPLUS_ERROR(logger_, "OpenProcess failed. Error " << error_code);
   }
+  bool is_safe_to_use_hoax_proxy = false;
   if (is_root_process) {
     command_info_.command_id = ExecutingEngine::kRootCommandId;
   } else {
@@ -154,11 +155,13 @@ void ExecutorImpl::Initialize(
      executing_engine_->RegisterByPID(
          current_pid,
          &command_info_.command_id,
-         &command_ids_should_append);
+         &command_ids_should_append,
+         &is_safe_to_use_hoax_proxy);
      executors_should_append_std_streams_ = executor_factory_->GetExecutors(
          command_ids_should_append);
   }
   executor_factory_->RegisterExecutor(command_id(), this);
+  return is_safe_to_use_hoax_proxy;
 }
 
 void ExecutorImpl::OnSuspendedProcessCreated(

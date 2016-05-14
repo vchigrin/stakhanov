@@ -216,7 +216,8 @@ void ExecutingEngine::AssociatePIDWithCommandId(
 void ExecutingEngine::RegisterByPID(
       int32_t pid,
       int* command_id,
-      std::vector<int>* command_ids_should_append_std_streams) {
+      std::vector<int>* command_ids_should_append_std_streams,
+      bool* is_safe_to_use_hoax_proxy) {
   std::lock_guard<std::mutex> instance_lock(instance_lock_);
   auto it = pid_to_unassigned_command_id_.find(pid);
   if (it == pid_to_unassigned_command_id_.end()) {
@@ -233,6 +234,8 @@ void ExecutingEngine::RegisterByPID(
     LOG4CPLUS_ERROR(logger_, "Invalid command id " << *command_id);
     return;
   }
+  *is_safe_to_use_hoax_proxy = process_management_config_->ShouldUseHoaxProxy(
+          cur_builder->process_creation_request());
   while (cur_builder && cur_builder->should_append_std_streams_to_parent()) {
     CumulativeExecutionResponseBuilder* parent = cur_builder->ancestor();
     if (!parent) {

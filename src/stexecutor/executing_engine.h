@@ -58,7 +58,8 @@ class ExecutingEngine {
   void RegisterByPID(
       int32_t pid,
       int* command_id,
-      std::vector<int>* command_ids_should_append_std_streams);
+      std::vector<int>* command_ids_should_append_std_streams,
+      bool* is_safe_to_use_hoax_proxy);
 
   FilesStorage* files_storage() const {
     return files_storage_.get();

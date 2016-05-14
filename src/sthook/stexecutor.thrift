@@ -18,7 +18,9 @@ struct CacheHitInfo {
 }
 
 service Executor {
-  void Initialize(1:i32 current_pid, 2:bool is_root_process);
+  // Returns true is it is safe to use "hoax proxy" for CreateProcess calls
+  // from this process.
+  bool Initialize(1:i32 current_pid, 2:bool is_root_process);
   bool HookedCreateFile(1:string abs_path, 2:bool for_writing);
   void PushStdOutput(1:StdHandles handle, 2:binary data);
   void HookedRenameFile(1:string old_name_str, 2:string new_name_str);

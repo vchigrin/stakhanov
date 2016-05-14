@@ -24,6 +24,14 @@
       {
         "command_line_patterns": [ "^.*mspdbsrv\\.exe$" ]
       }
+    ],
+    "use_hoax_proxy": [
+      {
+        "command_line_patterns": [ "^.*ninja(\\.exe)?$" ]
+      },
+      {
+        "command_line_patterns": [ "^.*yakuza(\\.exe)?$" ]
+      }
     ]
   },
   "files_storage": {

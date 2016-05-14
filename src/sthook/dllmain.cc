@@ -12,11 +12,7 @@
 BOOL CALLBACK DllMain(HINSTANCE h_instance, DWORD reason, LPVOID) {
   if (reason == DLL_PROCESS_ATTACH) {
     base::InitLogging(false);
-    if (!sthook::InstallHooks(h_instance)) {
-      LOG4CPLUS_ERROR(log4cplus::Logger::getRoot(),
-                      "Hook installation failed");
-    }
-    sthook::Initialize();
+    sthook::Initialize(h_instance);
   }
   return TRUE;
 }

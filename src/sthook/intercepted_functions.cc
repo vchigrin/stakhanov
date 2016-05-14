@@ -26,14 +26,13 @@
 #include "sthook/intercept_helper.h"
 #include "sthook/sthook_communication.h"
 #include "sthook/std_handles_holder.h"
-#include "stproxy/stproxy_communication.h"
+#include "sthook/process_proxy_manager.h"
 #include "thrift/protocol/TBinaryProtocol.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TPipe.h"
 
 namespace {
 
-const wchar_t kStProxyExeName[] = L"stproxy.exe";
 const wchar_t kStLaunchExeName[] = L"stlaunch.exe";
 
 std::mutex g_executor_call_mutex;
@@ -106,7 +105,6 @@ log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 LPCREATE_PROCESS_W g_original_CreateProcessW;
 LPCREATE_PROCESS_A g_original_CreateProcessA;
 LPNTSET_INFORMATION_FILE g_original_NtSetInformationFile;
-std::wstring g_stproxy_path;
 
 
 std::wstring LongPathNameFromRootDirAndString(
@@ -130,16 +128,6 @@ std::wstring LongPathNameFromRootDirAndString(
   if (result[result.length() - 1] == L'\\')
     result = result.substr(0, result.length() - 1);
   return base::ToLongPathName(result);
-}
-
-std::wstring InitStProxyPath(HMODULE current_module) {
-  std::vector<wchar_t> buffer(MAX_PATH + 1);
-  GetModuleFileName(current_module, &buffer[0], MAX_PATH);
-  buffer[MAX_PATH] = L'\0';
-  boost::filesystem::path cur_dll_path(&buffer[0]);
-  boost::filesystem::path result =
-      cur_dll_path.parent_path() / kStProxyExeName;
-  return result.native();
 }
 
 sthook::FunctionsInterceptor* GetInterceptor() {
@@ -357,107 +345,6 @@ std::vector<std::string> GetEnvironmentStringsAsUTF8() {
   return result;
 }
 
-base::ScopedHandle PrepareFileMapping(const CacheHitInfo& cache_hit_info) {
-  DWORD required_file_mapping_size =
-      sizeof(STPROXY_SECTION_HEADER) +
-      static_cast<DWORD>(cache_hit_info.result_stdout.length() +
-                         cache_hit_info.result_stderr.length());
-  SECURITY_ATTRIBUTES security_attributes = {0};
-  security_attributes.nLength = sizeof(security_attributes);
-  security_attributes.lpSecurityDescriptor = NULL;
-  security_attributes.bInheritHandle = TRUE;
-  base::ScopedHandle file_mapping_handle(CreateFileMapping(
-      INVALID_HANDLE_VALUE,
-      &security_attributes,
-      PAGE_READWRITE,
-      0,
-      required_file_mapping_size,
-      NULL));
-  if (!file_mapping_handle.IsValid()) {
-    DWORD error_code = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "CreateFileMapping failed, error " << error_code);
-    return base::ScopedHandle();
-  }
-  void* file_mapping_data = MapViewOfFile(
-      file_mapping_handle.Get(),
-      FILE_MAP_WRITE,
-      0, 0,
-      required_file_mapping_size);
-  if (!file_mapping_data) {
-    DWORD error_code = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "MapViewOfFile failed, error " << error_code);
-    return base::ScopedHandle();
-  }
-  STPROXY_SECTION_HEADER* header = static_cast<STPROXY_SECTION_HEADER*>(
-      file_mapping_data);
-  header->exit_code = cache_hit_info.exit_code;
-  header->stdout_byte_size = static_cast<DWORD>(
-      cache_hit_info.result_stdout.length());
-  header->stderr_byte_size = static_cast<DWORD>(
-      cache_hit_info.result_stderr.length());
-  uint8_t* dest_data = static_cast<uint8_t*>(file_mapping_data);
-  dest_data += sizeof(STPROXY_SECTION_HEADER);
-  memcpy(dest_data,
-         cache_hit_info.result_stdout.c_str(),
-         cache_hit_info.result_stdout.length());
-  dest_data += cache_hit_info.result_stdout.length();
-  memcpy(dest_data,
-         cache_hit_info.result_stderr.c_str(),
-         cache_hit_info.result_stderr.length());
-  UnmapViewOfFile(file_mapping_data);
-  return file_mapping_handle;
-}
-
-bool CreateProxyProcess(
-    const CacheHitInfo& cache_hit_info,
-    DWORD creation_flags,
-    HANDLE std_input_handle,
-    HANDLE std_output_handle,
-    HANDLE std_error_handle,
-    PROCESS_INFORMATION* process_information) {
-  base::ScopedHandle file_mapping_handle = PrepareFileMapping(cache_hit_info);
-  if (!file_mapping_handle.IsValid())
-    return false;
-  std::wostringstream buffer;
-  buffer << std::hex << file_mapping_handle.Get();
-  std::wstring handle_str = buffer.str();
-  std::vector<wchar_t> command_line;
-  // stproxy_path + 1 space + file_mapping_handle + zero terminator.
-  command_line.reserve(g_stproxy_path.length() + 1 + handle_str.length() + 1);
-  std::copy(
-      g_stproxy_path.begin(), g_stproxy_path.end(),
-      std::back_inserter(command_line));
-  command_line.push_back(L' ');
-  std::copy(
-      handle_str.begin(), handle_str.end(),
-      std::back_inserter(command_line));
-  command_line.push_back(L'\0');
-  STARTUPINFO startup_info = {0};
-  startup_info.cb = sizeof(startup_info);
-  startup_info.hStdInput = std_input_handle;
-  startup_info.hStdOutput = std_output_handle;
-  startup_info.hStdError = std_error_handle;
-  if (std_output_handle || std_error_handle || std_input_handle) {
-    startup_info.dwFlags = STARTF_USESTDHANDLES;
-  }
-  BOOL result = g_original_CreateProcessW(
-        NULL,
-        &command_line[0],
-        NULL,
-        NULL,
-        TRUE,  // Inherit handles
-        creation_flags & ~EXTENDED_STARTUPINFO_PRESENT,
-        NULL,
-        NULL,
-        &startup_info,
-        process_information);
-  if (!result) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "Failed  create proxy process, error " << error);
-  }
-  return result;
-}
-
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
 BOOL CreateProcessImpl(
     FUNCTION actual_function,
@@ -514,7 +401,7 @@ BOOL CreateProcessImpl(
   BOOL result = FALSE;
 
   if (cache_hit_info.cache_hit) {
-    result = CreateProxyProcess(
+    result = ProcessProxyManager::GetInstance()->CreateProxyProcess(
         cache_hit_info,
         creation_flags,
         startup_info->hStdInput,
@@ -802,6 +689,7 @@ void AfterDeleteFileW(BOOL result, LPCWSTR file_path) {
 
 namespace sthook {
 
+
 #define DEFINE_INTERCEPT(function_name, before_call, after_call, result, ...) \
 extern InterceptHelperData function_name##_InterceptData = { \
     #function_name, before_call, after_call };
@@ -860,14 +748,23 @@ bool InstallHooks(HMODULE current_module) {
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
   LOG4CPLUS_ASSERT(logger_, g_original_NtSetInformationFile);
-  g_stproxy_path = InitStProxyPath(current_module);
   return GetInterceptor()->Hook(intercepts, current_module);
 }
 
-void Initialize() {
+void Initialize(HMODULE current_module) {
+  if (!InstallHooks(current_module)) {
+    LOG4CPLUS_ERROR(logger_, "Hook installation failed");
+  }
   boost::filesystem::path current_exe = base::GetCurrentExecutablePath();
   const bool is_st_launch = (current_exe.filename() == kStLaunchExeName);
-  GetExecutor()->Initialize(GetCurrentProcessId(), is_st_launch);
+  const bool is_safe_to_use_hoax_proxy = GetExecutor()->Initialize(
+      GetCurrentProcessId(),
+      is_st_launch);
+  LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
+  ProcessProxyManager::Initialize(
+      current_module,
+      is_safe_to_use_hoax_proxy,
+      g_original_CreateProcessW);
   StdHandlesHolder::Initialize();
 }
 
