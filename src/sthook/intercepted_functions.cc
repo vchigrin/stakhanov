@@ -390,9 +390,6 @@ BOOL CreateProcessImpl(
     startup_dir_utf8 = base::ToUTF8FromWide(current_dir.wstring());
   }
 
-  // TODO(vchigrin): Analyze in executor, if we can use cached
-  // results of this invokation, create some dummy process driver
-  // instead of actual process creation.
   CacheHitInfo cache_hit_info;
   {
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
@@ -403,32 +400,31 @@ BOOL CreateProcessImpl(
         startup_dir_utf8,
         GetEnvironmentStringsAsUTF8());
   }
-  BOOL result = FALSE;
-
   if (cache_hit_info.cache_hit) {
-    result = ProcessProxyManager::GetInstance()->CreateProxyProcess(
+    // Cache hits should not go through all pipeline with
+    // injecting interceptor DLLs, tracking files, etc.
+    return ProcessProxyManager::GetInstance()->CreateProxyProcess(
         cache_hit_info,
         creation_flags,
         startup_info->hStdInput,
         startup_info->hStdOutput,
         startup_info->hStdError,
         process_information);
-  } else {
-    creation_flags |= CREATE_SUSPENDED;
-    result = actual_function(
-        application_name,
-        command_line,
-        process_attributes,
-        thread_attributes,
-        inherit_handles,
-        creation_flags,
-        environment,
-        current_directory,
-        startup_info,
-        process_information);
   }
-  if (!result)
-    return result;
+  creation_flags |= CREATE_SUSPENDED;
+  if (!actual_function(
+      application_name,
+      command_line,
+      process_attributes,
+      thread_attributes,
+      inherit_handles,
+      creation_flags,
+      environment,
+      current_directory,
+      startup_info,
+      process_information)) {
+    return FALSE;
+  }
 
   bool append_std_streams = (
       startup_info->dwFlags & STARTF_USESTDHANDLES) == 0;
@@ -436,9 +432,8 @@ BOOL CreateProcessImpl(
   if (instance) {
     append_std_streams &= instance->AreOriginalHandlesActive();
   }
-  if (!cache_hit_info.cache_hit) {
-    // Cache hits should not go through all pipeline with
-    // injecting interceptor DLLs, tracking files, etc.
+
+  {
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
     GetExecutor()->OnSuspendedProcessCreated(
         process_information->dwProcessId,
@@ -447,7 +442,7 @@ BOOL CreateProcessImpl(
         append_std_streams,
         request_suspended);
   }
-  return result;
+  return TRUE;
 }
 
 
