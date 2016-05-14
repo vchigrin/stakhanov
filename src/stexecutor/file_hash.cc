@@ -29,7 +29,7 @@ bool HashFileContent(
           // We hash files in OnBeforeExitProcess, so event if process
           // has some handles open for writing, they should not be used
           // for actual writing.
-          FILE_SHARE_READ | FILE_SHARE_WRITE,
+          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
           NULL,
           OPEN_EXISTING,
           FILE_ATTRIBUTE_NORMAL,
