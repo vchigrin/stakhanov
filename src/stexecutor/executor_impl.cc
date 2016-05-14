@@ -122,7 +122,7 @@ void ExecutorImpl::HookedRenameFile(
       boost::filesystem::path rel_old_path = build_dir_state->MakeRelativePath(
           norm_old_path);
       boost::filesystem::path rel_new_path = build_dir_state->MakeRelativePath(
-          norm_old_path);
+          norm_new_path);
       if (!rel_old_path.empty() && !rel_new_path.empty()) {
         // We're called after rename took place, so use new path to get
         // content id.
