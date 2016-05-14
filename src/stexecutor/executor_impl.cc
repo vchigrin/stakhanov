@@ -74,18 +74,31 @@ bool ExecutorImpl::HookedCreateFile(
   if (norm_path.empty()) {  // May be if path is "invalid" for intercept
     return true;
   }
+  auto* build_dir_state = executing_engine_->build_dir_state();
+  boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
+      norm_path);
+  if (rel_path.empty())
+    return true;
   if (for_writing) {
-    auto* build_dir_state = executing_engine_->build_dir_state();
-    boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
-        norm_path);
-    if (!rel_path.empty()) {
-      build_dir_state->NotifyFileChanged(rel_path);
-    }
+    build_dir_state->NotifyFileChanged(rel_path);
     if (!files_filter_->CanDropOutput(norm_path))
       output_files_.insert(norm_path);
   } else {
-    if (!files_filter_->CanDropInput(norm_path))
-      input_files_.insert(norm_path);
+    if (input_files_.count(rel_path) != 0)
+      return true;  // Already marked as "input"
+    if (files_filter_->CanDropInput(norm_path))
+      return true;
+    // We must hash input files ASAP, since some commands
+    // use files both as "input" and "output", so hashing them at
+    // ExitProcess() time will produce invalid results.
+    std::string content_id = build_dir_state->GetFileContentId(
+        rel_path);
+    if (content_id.empty()) {
+      LOG4CPLUS_ERROR(logger_, "Failed hash input file " << rel_path);
+      return true;
+    }
+    input_files_.insert(std::make_pair(rel_path,
+        rules_mappers::FileInfo(rel_path, content_id)));
   }
   return true;
 }
@@ -104,9 +117,21 @@ void ExecutorImpl::HookedRenameFile(
     // describe rename.
     removed_files_.insert(norm_old_path);
     if (!files_filter_->CanDropInput(norm_old_path)) {
-      input_files_.insert(norm_old_path);
-      input_path_to_new_path_.insert(
-          std::make_pair(norm_old_path, norm_new_path));
+      BuildDirectoryState* build_dir_state =
+          executing_engine_->build_dir_state();
+      boost::filesystem::path rel_old_path = build_dir_state->MakeRelativePath(
+          norm_old_path);
+      boost::filesystem::path rel_new_path = build_dir_state->MakeRelativePath(
+          norm_old_path);
+      if (!rel_old_path.empty() && !rel_new_path.empty()) {
+        // We're called after rename took place, so use new path to get
+        // content id.
+        std::string content_id = build_dir_state->GetFileContentId(
+            rel_new_path);
+        input_files_.insert(std::make_pair(
+            rel_old_path,
+            rules_mappers::FileInfo(rel_old_path, content_id)));
+      }
     }
   }
   if (!files_filter_->CanDropOutput(norm_new_path))
@@ -163,7 +188,12 @@ void ExecutorImpl::OnFileDeleted(const std::string& abs_path) {
   // TODO(vchigrin): Consider better handling of deleted files, we should
   // be able cache commands like "del foo.txt" where "foo.txt" must be
   // considered as input.
-  input_files_.erase(norm_path);
+
+  BuildDirectoryState* build_dir_state =
+      executing_engine_->build_dir_state();
+  boost::filesystem::path rel_old_path = build_dir_state->MakeRelativePath(
+      norm_path);
+  input_files_.erase(rel_old_path);
   removed_files_.insert(norm_path);
 }
 
@@ -201,27 +231,14 @@ void ExecutorImpl::FillFileInfos() {
     command_info_.output_files.push_back(
         rules_mappers::FileInfo(rel_path, storage_id));
   }
-  for (const boost::filesystem::path& input_path : input_files_) {
-    boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(
-        input_path);
-    boost::filesystem::path rel_original_path;
-    auto it = input_path_to_new_path_.find(input_path);
-    if (it != input_path_to_new_path_.end())
-      rel_original_path = build_dir_state->MakeRelativePath(it->second);
-    else
-      rel_original_path = rel_path;
-    if (rel_path.empty() || rel_original_path.empty()) {
-      continue;
-    }
-    std::string content_id = build_dir_state->GetFileContentId(
-        rel_original_path);
-    if (content_id.empty()) {
-      LOG4CPLUS_ERROR(logger_, "Failed hash input file " << input_path);
-      continue;
-    }
-    command_info_.input_files.push_back(
-        rules_mappers::FileInfo(rel_path, content_id));
-  }
+  command_info_.input_files.reserve(input_files_.size());
+  std::transform(
+      input_files_.begin(),
+      input_files_.end(),
+      std::back_inserter(command_info_.input_files),
+      [] (const auto& input_path_and_file) {
+          return input_path_and_file.second;
+      });
   command_info_.removed_rel_paths.reserve(removed_files_.size());
   for (const boost::filesystem::path& removed_path : removed_files_) {
     boost::filesystem::path rel_path = build_dir_state->MakeRelativePath(

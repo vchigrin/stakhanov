@@ -76,13 +76,12 @@ class ExecutorImpl : public ExecutorIf {
   ExecutedCommandInfo command_info_;
   using FilePathSet = std::unordered_set<
       boost::filesystem::path, base::FilePathHash>;
-  FilePathSet input_files_;
+  using FilePathMap = std::unordered_map<
+      boost::filesystem::path, rules_mappers::FileInfo, base::FilePathHash>;
+
+  FilePathMap input_files_;
   FilePathSet output_files_;
   FilePathSet removed_files_;
-  using FilePathMapping = std::unordered_map<
-      boost::filesystem::path, boost::filesystem::path, base::FilePathHash>;
-  // Need to track files renaming.
-  FilePathMapping input_path_to_new_path_;
   base::ScopedHandle process_handle_;
   // List of Executors, related to parent processes, that share same
   // stdout and stderr handles.
