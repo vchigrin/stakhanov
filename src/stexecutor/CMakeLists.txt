@@ -56,6 +56,7 @@ target_link_libraries(stexecutor
   base
   cryptopp-static
   log4cplus
+  redisclient
   sthook_communication
 )
 

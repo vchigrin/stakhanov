@@ -99,6 +99,7 @@ set(LOG4CPLUS_INCLUDE "${CMAKE_SOURCE_DIR}/third_party/log4cplus/include")
 add_subdirectory(third_party/cryptopp)
 
 # ---------------------- RedisClient -----------------------------------------
+add_definitions(-DREDIS_CLIENT_SEPARATED_COMPILATION)
 add_subdirectory(third_party/redisclient)
 
 # ---------------------- Other --------------------------------------------
