@@ -61,6 +61,10 @@ typedef BOOL (WINAPI *LPCREATE_PROCESS_A)(
     LPSTARTUPINFOA startup_info,
     LPPROCESS_INFORMATION process_information);
 
+typedef BOOL (WINAPI *LPGET_EXIT_CODE_PROCESS)(
+    HANDLE process_handle,
+    LPDWORD exit_code);
+
 typedef struct _FILE_RENAME_INFORMATION {
   BOOLEAN ReplaceIfExists;
   HANDLE  RootDirectory;
@@ -104,6 +108,7 @@ log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
 LPCREATE_PROCESS_W g_original_CreateProcessW;
 LPCREATE_PROCESS_A g_original_CreateProcessA;
+LPGET_EXIT_CODE_PROCESS g_original_GetExitCodeProcess;
 LPNTSET_INFORMATION_FILE g_original_NtSetInformationFile;
 
 
@@ -496,6 +501,20 @@ BOOL WINAPI NewCreateProcessW(
       process_information);
 }
 
+BOOL WINAPI NewGetExitCodeProcess(
+    HANDLE process_handle,
+    LPDWORD exit_code) {
+  auto* process_proxy_manager = ProcessProxyManager::GetInstance();
+  if (process_proxy_manager) {
+    if (process_proxy_manager->TryGetExitCodeProcess(
+        process_handle, exit_code)) {
+      return TRUE;
+    }
+  }
+  return g_original_GetExitCodeProcess(
+      process_handle, exit_code);
+}
+
 void BeforeWriteFile(
     HANDLE file,
     LPCVOID buffer,
@@ -615,11 +634,14 @@ void AfterDuplicateHandle(
 }
 
 void AfterCloseHandle(BOOL result, HANDLE handle) {
-  if (result) {
-    StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
-    if (instance)
-      instance->MarkHandleClosed(handle);
-  }
+  if (!result)
+    return;
+  StdHandlesHolder* handles_holder = StdHandlesHolder::GetInstance();
+  if (handles_holder)
+    handles_holder->MarkHandleClosed(handle);
+  auto* process_proxy_manager = ProcessProxyManager::GetInstance();
+  if (process_proxy_manager)
+    process_proxy_manager->NotifyHandleClosed(handle);
 }
 
 void FlushUCRTIfPossible() {
@@ -716,6 +738,8 @@ bool InstallHooks(HMODULE current_module) {
       std::make_pair("CreateProcessA", &NewCreateProcessA));
   kernel_intercepts.insert(
       std::make_pair("CreateProcessW", &NewCreateProcessW));
+  kernel_intercepts.insert(
+      std::make_pair("GetExitCodeProcess", &NewGetExitCodeProcess));
   FunctionsInterceptor::Intercepts intercepts;
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
@@ -743,10 +767,13 @@ bool InstallHooks(HMODULE current_module) {
       GetProcAddress(kernel_module, "CreateProcessW"));
   g_original_CreateProcessA = reinterpret_cast<LPCREATE_PROCESS_A>(
       GetProcAddress(kernel_module, "CreateProcessA"));
+  g_original_GetExitCodeProcess = reinterpret_cast<LPGET_EXIT_CODE_PROCESS>(
+      GetProcAddress(kernel_module, "GetExitCodeProcess"));
   g_original_NtSetInformationFile = reinterpret_cast<LPNTSET_INFORMATION_FILE>(
       GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtSetInformationFile"));
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
+  LOG4CPLUS_ASSERT(logger_, g_original_GetExitCodeProcess);
   LOG4CPLUS_ASSERT(logger_, g_original_NtSetInformationFile);
   return GetInterceptor()->Hook(intercepts, current_module);
 }

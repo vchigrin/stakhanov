@@ -17,6 +17,54 @@ const wchar_t kStProxyExeName[] = L"stproxy.exe";
 log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
     L"ProcessProxyManager");
 
+bool PutString(HANDLE file, const std::string& data_to_put) {
+  if (data_to_put.empty())
+    return true;
+  DWORD bytes_written = 0;
+  BOOL success = WriteFile(
+      file,
+      data_to_put.data(),
+      static_cast<DWORD>(data_to_put.length()),
+      &bytes_written,
+      NULL);
+  if (!success || bytes_written != data_to_put.length()) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "Failed write std stream. Error " << error);
+    return false;
+  }
+  return true;
+}
+
+struct HoaxWorkItemContext {
+  std::string result_stdout;
+  std::string result_stderr;
+  HANDLE std_output_handle = NULL;
+  HANDLE std_error_handle = NULL;
+  HANDLE process_handle = NULL;
+  HANDLE thread_handle = NULL;
+
+  HoaxWorkItemContext() {}
+
+  ~HoaxWorkItemContext() {
+    if (std_output_handle)
+      CloseHandle(std_output_handle);
+    if (std_error_handle)
+      CloseHandle(std_error_handle);
+    // process_handle and thread_handle should be closed by our
+    // client process.
+  }
+};
+
+DWORD CALLBACK HoaxThreadPoolProc(void* param) {
+  HoaxWorkItemContext* ctx = static_cast<HoaxWorkItemContext*>(param);
+  PutString(ctx->std_output_handle, ctx->result_stdout);
+  PutString(ctx->std_error_handle, ctx->result_stderr);
+  SetEvent(ctx->process_handle);
+  SetEvent(ctx->thread_handle);
+  delete ctx;
+  return 0;
+}
+
 }  // namespace
 
 ProcessProxyManager* ProcessProxyManager::instance_ = nullptr;
@@ -42,6 +90,120 @@ ProcessProxyManager::ProcessProxyManager(
 }
 
 bool ProcessProxyManager::CreateProxyProcess(
+    const CacheHitInfo& cache_hit_info,
+    DWORD creation_flags,
+    HANDLE std_input_handle,
+    HANDLE std_output_handle,
+    HANDLE std_error_handle,
+    PROCESS_INFORMATION* process_information) {
+  if (is_safe_to_use_hoax_proxy_) {
+    return CreateHoaxProxy(
+        cache_hit_info,
+        std_output_handle,
+        std_error_handle,
+        process_information);
+  } else {
+    return CreateRealProxyProcess(
+        cache_hit_info,
+        creation_flags,
+        std_input_handle,
+        std_output_handle,
+        std_error_handle,
+        process_information);
+  }
+}
+
+bool ProcessProxyManager::TryGetExitCodeProcess(
+    HANDLE process_handle, DWORD* exit_code) {
+  if (!exit_code)
+    return false;
+
+  std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
+  auto it = process_handle_to_exit_code_.find(process_handle);
+  if (it != process_handle_to_exit_code_.end()) {
+    *exit_code = it->second;
+    return true;
+  }
+  return false;
+}
+
+void ProcessProxyManager::NotifyHandleClosed(HANDLE handle) {
+  std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
+  process_handle_to_exit_code_.erase(handle);
+}
+
+bool ProcessProxyManager::CreateHoaxProxy(
+    const CacheHitInfo& cache_hit_info,
+    HANDLE std_output_handle,
+    HANDLE std_error_handle,
+    PROCESS_INFORMATION* process_information) {
+  HANDLE process_handle = CreateEvent(NULL, FALSE, FALSE, NULL);
+  HANDLE thread_handle = CreateEvent(NULL, FALSE, FALSE, NULL);
+  process_information->hProcess = process_handle;
+  process_information->hThread = thread_handle;
+  if (!process_handle || !thread_handle) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "CreateEvent failed. Error " << error);
+    return false;
+  }
+  process_information->dwProcessId = 0;
+  process_information->dwThreadId = 0;
+  {
+    std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
+    process_handle_to_exit_code_[process_handle] = cache_hit_info.exit_code;
+  }
+  // Write string content asynchronously, then signal event
+  // that represent "process" handle.
+  // We must use async write since in case using Pipes for interprocess
+  // communication WriteFile call may hang until our process issues ReadFile
+  // call on other side.
+  std::unique_ptr<HoaxWorkItemContext> ctx(new HoaxWorkItemContext);
+  ctx->result_stdout = cache_hit_info.result_stdout;
+  ctx->result_stderr = cache_hit_info.result_stderr;
+  // We must duplicate handles since caller can close them immediately
+  // after CreateProcess returns (since these handles already "passed" to
+  // child process).
+  HANDLE current_process = GetCurrentProcess();
+  if (!DuplicateHandle(
+      current_process,
+      std_output_handle,
+      current_process,
+      &ctx->std_output_handle,
+      0,
+      FALSE,
+      DUPLICATE_SAME_ACCESS)) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "DuplicateHandle failed. Error " << error);
+    return false;
+  }
+  if (!DuplicateHandle(
+      current_process,
+      std_error_handle,
+      current_process,
+      &ctx->std_error_handle,
+      0,
+      FALSE,
+      DUPLICATE_SAME_ACCESS)) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "DuplicateHandle failed. Error " << error);
+    return false;
+  }
+  ctx->process_handle = process_handle;
+  ctx->thread_handle = thread_handle;
+  auto* ctx_ptr = ctx.release();
+  if (!QueueUserWorkItem(
+      HoaxThreadPoolProc,
+      ctx_ptr,
+      WT_EXECUTEDEFAULT)) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "QueueUserWorkItem failed. Error " << error);
+    delete ctx_ptr;
+    return false;
+  }
+  return true;
+}
+
+bool ProcessProxyManager::CreateRealProxyProcess(
     const CacheHitInfo& cache_hit_info,
     DWORD creation_flags,
     HANDLE std_input_handle,

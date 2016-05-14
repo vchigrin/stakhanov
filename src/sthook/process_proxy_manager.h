@@ -7,6 +7,7 @@
 
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 #include "base/scoped_handle.h"
 #include "gen-cpp/Executor.h"
@@ -40,8 +41,22 @@ class ProcessProxyManager {
       HANDLE std_output_handle,
       HANDLE std_error_handle,
       PROCESS_INFORMATION* process_information);
+  bool TryGetExitCodeProcess(HANDLE process_handle, DWORD* exit_code);
+  void NotifyHandleClosed(HANDLE handle);
 
  private:
+  bool CreateHoaxProxy(
+      const CacheHitInfo& cache_hit_info,
+      HANDLE std_output_handle,
+      HANDLE std_error_handle,
+      PROCESS_INFORMATION* process_information);
+  bool CreateRealProxyProcess(
+      const CacheHitInfo& cache_hit_info,
+      DWORD creation_flags,
+      HANDLE std_input_handle,
+      HANDLE std_output_handle,
+      HANDLE std_error_handle,
+      PROCESS_INFORMATION* process_information);
   ProcessProxyManager(
       HMODULE current_module,
       bool is_safe_to_use_hoax_proxy,
@@ -53,6 +68,9 @@ class ProcessProxyManager {
   const bool is_safe_to_use_hoax_proxy_;
   LPCREATE_PROCESS_W original_create_process_;
   std::wstring stproxy_path_;
+
+  std::mutex process_handle_to_exit_code_lock_;
+  std::unordered_map<HANDLE, DWORD> process_handle_to_exit_code_;
 };
 
 #endif  // STHOOK_PROCESS_PROXY_MANAGER_H_
