@@ -99,8 +99,6 @@ static const int FileRenameInformation = 10;
           HANDLE, const VOID*, DWORD, LPDWORD, LPVOID) \
     DO_IT(WriteConsoleW, &BeforeWriteConsoleW, nullptr, BOOL, \
           HANDLE, const VOID*, DWORD, LPDWORD, LPVOID) \
-    DO_IT(SetStdHandle, nullptr, &AfterSetStdHandle, BOOL, \
-          DWORD, HANDLE) \
     DO_IT(DuplicateHandle, nullptr, &AfterDuplicateHandle, BOOL, \
           HANDLE, HANDLE, HANDLE, LPHANDLE, DWORD, BOOL, DWORD) \
     DO_IT(DeleteFileA, nullptr, &AfterDeleteFileA, BOOL, LPCSTR) \
@@ -646,20 +644,6 @@ void BeforeWriteConsoleW(
       std::lock_guard<std::mutex> lock(g_executor_call_mutex);
       GetExecutor()->PushStdOutput(handle_type, ansi_string);
     }
-  }
-}
-
-void AfterSetStdHandle(
-    BOOL result,
-    DWORD handle_id,
-    HANDLE handle_val) {
-  if (result &&
-     (handle_id == STD_OUTPUT_HANDLE || handle_id == STD_ERROR_HANDLE)) {
-    StdHandles::type handle_type = (handle_id == STD_OUTPUT_HANDLE ?
-        StdHandles::StdOutput : StdHandles::StdError);
-    StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
-    if (instance)
-      instance->SetStdHandle(handle_type, handle_val);
   }
 }
 
