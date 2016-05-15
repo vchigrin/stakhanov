@@ -10,6 +10,7 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "base/filesystem_utils.h"
+#include "base/scoped_handle.h"
 #include "base/string_utils.h"
 #include "stexecutor/file_hash.h"
 #include "stexecutor/files_storage.h"
@@ -66,11 +67,37 @@ bool BuildDirectoryState::TakeFileFromStorage(
   // We must update modification time of file (files storage may not do this
   // if it uses hard links). Without it some commands,
   // like used by NaCL toolcain in chromium build, will fail.
-  std::time_t now = std::time(nullptr);
-  boost::system::error_code ec;
-  boost::filesystem::last_write_time(abs_path, now, ec);
-  if (ec) {
-    LOG4CPLUS_ERROR(logger_, "Failed set file mtime, error " << ec);
+  // boost::filesystem::last_write_time uses std::time_t, that is measured in
+  // seconds. Such granularity is not always enough
+  base::ScopedHandle file_handle(
+      CreateFileW(
+          abs_path.native().c_str(),
+          GENERIC_WRITE,
+          FILE_SHARE_READ | FILE_SHARE_WRITE,
+          NULL,
+          OPEN_EXISTING,
+          FILE_ATTRIBUTE_NORMAL,
+          NULL));
+  if (!file_handle.IsValid()) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(
+        logger_,
+        "Failed open file " << abs_path.c_str() << " Error " << error);
+    return false;
+  }
+  FILETIME last_write_time = {0};
+  SYSTEMTIME system_time = {0};
+  GetSystemTime(&system_time);
+  SystemTimeToFileTime(&system_time, &last_write_time);
+  if (!SetFileTime(
+      file_handle.Get(),
+      NULL,  // Creation time
+      NULL,  // Last access time
+      &last_write_time)) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(
+        logger_,
+        "Failed SetFileTime " << abs_path.c_str() << " Error " << error);
     return false;
   }
   return true;
