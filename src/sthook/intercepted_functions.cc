@@ -15,6 +15,7 @@
 #include <string>
 #include <utility>
 
+#include "base/timed_block.h"
 #include "base/filesystem_utils.h"
 #include "base/scoped_handle.h"
 #include "base/string_utils.h"
@@ -353,27 +354,59 @@ std::vector<std::string> GetEnvironmentStringsAsUTF8() {
 }
 
 std::string ComputeEnvironmentHash() {
-  std::vector<std::string> sorted_env = GetEnvironmentStringsAsUTF8();
-  std::sort(sorted_env.begin(), sorted_env.end());
+  static thread_local std::vector<wchar_t> last_seen_env_block;
+  static thread_local std::string last_hash;
+
+  const wchar_t* env_block = GetEnvironmentStringsW();
+  if (!env_block) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "GetEnvironmentStringsW failed, error " << error);
+    return std::string();
+  }
+  const wchar_t* p = env_block;
+  while (*p) {
+    p += (wcslen(p) + 1);
+  }
+  std::vector<wchar_t> current_env_block(env_block, p);
+  if (current_env_block.size() == last_seen_env_block.size() &&
+      std::equal(
+          current_env_block.begin(),
+          current_env_block.end(),
+          last_seen_env_block.begin())) {
+    return last_hash;
+  }
+
+  std::vector<std::wstring> strings;
+  p = env_block;
+  while (*p) {
+    strings.emplace_back(p);
+    p += (wcslen(p) + 1);
+  }
+
+  std::sort(strings.begin(), strings.end());
   CryptoPP::Weak::MD5 hasher;
-  for (const std::string& str : sorted_env) {
+  for (const std::wstring& str : strings) {
     // Windows has some "special" env variables like
     // "=ExitCode", "=C:", etc., that greatly vary, preventing caching.
     // Hope programs will not use them and skip them. Return in case
     // any problems.
-    if (str.empty() || str[0] == '=')
+    if (str.empty() || str[0] == L'=')
       continue;
     // Some helper variables, set by TeamCity. They may vary from build
     // to build.
     // TODO(vchigrin): Move env. vars exclusion rules to config file.
-    if (str.find("BUILD_") == 0 || str.find("TEAMCITY_") == 0)
+    if (str.find(L"BUILD_") == 0 || str.find(L"TEAMCITY_") == 0)
       continue;
     hasher.Update(
-        reinterpret_cast<const uint8_t*>(str.data()), str.length());
+        reinterpret_cast<const uint8_t*>(str.data()),
+        str.length() * sizeof(wchar_t));
   }
   std::vector<uint8_t> digest(hasher.DigestSize());
   hasher.Final(&digest[0]);
-  return base::BytesToHexString(digest);
+  std::string result = base::BytesToHexString(digest);
+  last_seen_env_block = std::move(current_env_block);
+  last_hash = result;
+  return result;
 }
 
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
