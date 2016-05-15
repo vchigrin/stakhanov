@@ -17,7 +17,6 @@
 #include "stexecutor/files_filter.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
-#include "third_party/cryptopp/md5.h"
 
 namespace {
 
@@ -268,12 +267,12 @@ void ExecutorImpl::OnBeforeProcessCreate(
     const std::string& exe_path,
     const std::vector<std::string>& arguments,
     const std::string& startup_directory,
-    const std::vector<std::string>& environment_strings) {
+    const std::string& environment_hash) {
   ProcessCreationRequest creation_request(
       exe_path,
       NormalizePath(startup_directory),
       arguments,
-      ComputeEnvironmentHash(environment_strings));
+      environment_hash);
   ProcessCreationResponse response = executing_engine_->AttemptCacheExecute(
       command_info_.command_id, creation_request);
   result.cache_hit = response.is_cache_hit();
@@ -281,53 +280,6 @@ void ExecutorImpl::OnBeforeProcessCreate(
   result.result_stdout = response.result_stdout();
   result.result_stderr = response.result_stderr();
   result.executor_command_id = response.real_command_id();
-}
-
-std::string ExecutorImpl::ComputeEnvironmentHash(
-    const std::vector<std::string>& env) {
-  std::vector<std::string> sorted_env(env);
-  std::sort(sorted_env.begin(), sorted_env.end());
-  CryptoPP::Weak::MD5 hasher;
-  for (const std::string& str : sorted_env) {
-    // Windows has some "special" env variables like
-    // "=ExitCode", "=C:", etc., that greatly vary, preventing caching.
-    // Hope programs will not use them and skip them. Return in case
-    // any problems.
-    if (str.empty() || str[0] == '=')
-      continue;
-    // Some helper variables, set by TeamCity. They may vary from build
-    // to build.
-    // TODO(vchigrin): Move env. vars exclusion rules to config file.
-    if (str.find("BUILD_") == 0 || str.find("TEAMCITY_") == 0)
-      continue;
-    hasher.Update(
-        reinterpret_cast<const uint8_t*>(str.data()), str.length());
-  }
-  std::vector<uint8_t> digest(hasher.DigestSize());
-  hasher.Final(&digest[0]);
-  std::string result = base::BytesToHexString(digest);
-  DumpEnvIfNeed(result, sorted_env);
-  return result;
-}
-
-void ExecutorImpl::DumpEnvIfNeed(
-    const std::string& env_hash, const std::vector<std::string>& sorted_env) {
-  if (dump_env_dir_.empty())
-    return;
-  boost::filesystem::path file_path = dump_env_dir_ / env_hash;
-  boost::filesystem::filebuf filebuf;
-  if (boost::filesystem::exists(file_path))
-    return;
-  if (!filebuf.open(file_path, std::ios::out | std::ios::binary)) {
-    LOG4CPLUS_ERROR(logger_, "Failed open file " << file_path.c_str());
-    return;
-  }
-  for (const std::string& str : sorted_env) {
-    if (!str.empty() && str[0] != '=') {
-      filebuf.sputn(str.data(), str.length());
-      filebuf.sputc('\n');
-    }
-  }
 }
 
 void ExecutorImpl::PushStdOutput(

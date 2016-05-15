@@ -32,6 +32,12 @@ add_custom_command(
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/stexecutor.thrift
 )
 
+target_compile_definitions(sthook PRIVATE
+  # To avoid warnings about MD5. They are fine since we use it not for
+  # cryptographic targets.
+  CRYPTOPP_ENABLE_NAMESPACE_WEAK=1
+)
+
 # Small static library with common code need both for sthook and stexecutor.
 add_library(sthook_communication STATIC
   gen-cpp/Executor.cpp
@@ -52,6 +58,7 @@ target_include_directories(sthook_communication PUBLIC
 target_link_libraries(sthook
   ${Boost_LIBRARIES}
   base
+  cryptopp-static
   log4cplus
   sthook_communication
   ntdll.lib

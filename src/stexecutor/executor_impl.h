@@ -42,7 +42,7 @@ class ExecutorImpl : public ExecutorIf {
       const std::string& exe_path,
       const std::vector<std::string>& arguments,
       const std::string& startup_dir,
-      const std::vector<std::string>& environment) override;
+      const std::string& environment_hash) override;
   void OnSuspendedProcessCreated(
       const int32_t child_pid,
       const int32_t child_main_thread_id,
@@ -64,7 +64,6 @@ class ExecutorImpl : public ExecutorIf {
 
  private:
   void FillFileInfos();
-  std::string ComputeEnvironmentHash(const std::vector<std::string>& env);
   void DumpEnvIfNeed(
       const std::string& env_hash,
       const std::vector<std::string>& sorted_env);

@@ -28,7 +28,7 @@ service Executor {
       1:string exe_path,
       2:list<string> command_line,
       3:string startup_dir_utf8,
-      4:list<string> environment_strings);
+      4:string environment_hash);
   void OnBeforeExitProcess();
 
   void OnSuspendedProcessCreated(

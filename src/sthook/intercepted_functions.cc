@@ -4,6 +4,7 @@
 
 #include "sthook/intercepted_functions.h"
 
+#include <algorithm>
 #include <shellapi.h>
 #include <versionhelpers.h>
 #include <windows.h>
@@ -27,6 +28,7 @@
 #include "sthook/sthook_communication.h"
 #include "sthook/std_handles_holder.h"
 #include "sthook/process_proxy_manager.h"
+#include "third_party/cryptopp/md5.h"
 #include "thrift/protocol/TBinaryProtocol.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TPipe.h"
@@ -350,6 +352,30 @@ std::vector<std::string> GetEnvironmentStringsAsUTF8() {
   return result;
 }
 
+std::string ComputeEnvironmentHash() {
+  std::vector<std::string> sorted_env = GetEnvironmentStringsAsUTF8();
+  std::sort(sorted_env.begin(), sorted_env.end());
+  CryptoPP::Weak::MD5 hasher;
+  for (const std::string& str : sorted_env) {
+    // Windows has some "special" env variables like
+    // "=ExitCode", "=C:", etc., that greatly vary, preventing caching.
+    // Hope programs will not use them and skip them. Return in case
+    // any problems.
+    if (str.empty() || str[0] == '=')
+      continue;
+    // Some helper variables, set by TeamCity. They may vary from build
+    // to build.
+    // TODO(vchigrin): Move env. vars exclusion rules to config file.
+    if (str.find("BUILD_") == 0 || str.find("TEAMCITY_") == 0)
+      continue;
+    hasher.Update(
+        reinterpret_cast<const uint8_t*>(str.data()), str.length());
+  }
+  std::vector<uint8_t> digest(hasher.DigestSize());
+  hasher.Final(&digest[0]);
+  return base::BytesToHexString(digest);
+}
+
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
 BOOL CreateProcessImpl(
     FUNCTION actual_function,
@@ -396,7 +422,7 @@ BOOL CreateProcessImpl(
         exe_path,
         arguments_utf8,
         startup_dir_utf8,
-        GetEnvironmentStringsAsUTF8());
+        ComputeEnvironmentHash());
   }
   if (cache_hit_info.cache_hit) {
     // Cache hits should not go through all pipeline with
