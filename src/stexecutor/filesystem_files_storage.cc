@@ -85,6 +85,8 @@ FilesystemFilesStorage::FilesystemFilesStorage(
   } catch(const std::exception& ex) {
     LOG4CPLUS_FATAL(logger_, "Error during config parsing " << ex.what());
   }
+  CryptoPP::Weak::MD5 hasher;
+  empty_content_id_ = StorageIdFromHasher(&hasher);
 }
 
 void FilesystemFilesStorage::LoadConfig(
@@ -146,6 +148,8 @@ bool FilesystemFilesStorage::GetFileFromStorage(
 }
 
 std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
+  if (data.empty())
+    return empty_content_id_;
   if (max_file_size_) {
     if (data.length() > max_file_size_) {
       LOG4CPLUS_INFO(
@@ -177,6 +181,8 @@ std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
 
 std::string FilesystemFilesStorage::RetrieveContent(
     const std::string& storage_id) {
+  if (storage_id == empty_content_id_)
+    return std::string();
   boost::filesystem::path file_path = FilePathFromId(storage_id);
   std::lock_guard<std::mutex> instance_lock(instance_lock_);
   if (!boost::filesystem::exists(file_path)) {

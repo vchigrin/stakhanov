@@ -35,6 +35,7 @@ class FilesystemFilesStorage : public FilesStorage {
   boost::filesystem::path storage_dir_;
   // Zero means no limit.
   uint32_t max_file_size_;
+  std::string empty_content_id_;
   // Set of file extensions  (with dot, like ".obj"), that are safe to hardlink
   // from build dir to cache and vise versa.
   std::unordered_set<std::string> safe_to_link_extensions_;
