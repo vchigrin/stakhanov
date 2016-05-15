@@ -81,11 +81,19 @@ bool ExecutorImpl::HookedCreateFile(
     return true;
   if (for_writing) {
     build_dir_state->NotifyFileChanged(rel_path);
-    if (!files_filter_->CanDropOutput(norm_path))
+    if (!files_filter_->CanDropOutput(norm_path)) {
+      removed_files_.erase(norm_path);
       output_files_.insert(norm_path);
+    }
   } else {
     if (input_files_.count(rel_path) != 0)
       return true;  // Already marked as "input"
+    // That is our output file. Some commands like linkers from NaCl toolchain
+    // re-open their outputs for reading for some reason. Avoid adding
+    // them as inputs - in other case we'll never will get cache hit
+    // for them.
+    if (output_files_.count(norm_path) != 0)
+      return true;
     if (files_filter_->CanDropInput(norm_path))
       return true;
     // We must hash input files ASAP, since some commands
@@ -134,8 +142,10 @@ void ExecutorImpl::HookedRenameFile(
       }
     }
   }
-  if (!files_filter_->CanDropOutput(norm_new_path))
+  if (!files_filter_->CanDropOutput(norm_new_path)) {
+    removed_files_.erase(norm_new_path);
     output_files_.insert(norm_new_path);
+  }
 }
 
 bool ExecutorImpl::Initialize(

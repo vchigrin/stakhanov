@@ -79,8 +79,24 @@ std::unique_ptr<rules_mappers::CachedExecutionResponse>
   std::vector<rules_mappers::FileInfo> output_files;
   output_files.reserve(output_files_.size());
   for (const auto& file_path_and_info : output_files_) {
-    if (removed_rel_paths_.count(file_path_and_info.first) == 0)
-      output_files.push_back(file_path_and_info.second);
+    // Save output file even if it present in removed set.
+    // This is neccessary since NaCl build_nexe.py script removes existing
+    // files before build. At present we do not take into account timestamps,
+    // so without this we will lost valuable outputs.
+    // TODO(vchigrin): We have to re-design whole this stuff, and should handle
+    // all these cases correctly
+    // Case A:
+    // 1. Parent process deletes foo.obj
+    // 2. Child process creates foo.obj
+    // Case B:
+    // 1. Child process created foo.tmp
+    // 2. Parent process deletes foo.tmp
+    // Case C:
+    // 1. Child process created foo.dat
+    // 2. Parent process moved foo.dat to bar.dat
+
+    removed_rel_paths_.erase(file_path_and_info.first);
+    output_files.push_back(file_path_and_info.second);
   }
   return std::unique_ptr<rules_mappers::CachedExecutionResponse>(
       new rules_mappers::CachedExecutionResponse(
