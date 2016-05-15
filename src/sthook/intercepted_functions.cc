@@ -367,19 +367,17 @@ BOOL CreateProcessImpl(
 
   std::string exe_path;
   if (application_name) {
-    exe_path = base::AbsPathUTF8(
+    exe_path = base::ToUTF8(
         std::basic_string<CHAR_TYPE>(application_name));
   }
   std::vector<std::string> arguments_utf8;
   if (command_line) {
     std::vector<std::wstring> arguments = SplitCommandLine(command_line);
     for (const std::wstring& argument: arguments) {
-      // TODO(vchigrin): Is it OK to convert everything to long path?
-      std::wstring native_long_path = base::ToLongPathName(argument);
-      arguments_utf8.push_back(base::ToUTF8FromWide(native_long_path));
+      arguments_utf8.push_back(base::ToUTF8FromWide(argument));
     }
-    if (exe_path.empty() && !arguments.empty())
-      exe_path = base::AbsPathUTF8(arguments[0]);
+    if (exe_path.empty() && !arguments_utf8.empty())
+      exe_path = arguments_utf8[0];
   }
   std::string startup_dir_utf8;
   if (current_directory) {

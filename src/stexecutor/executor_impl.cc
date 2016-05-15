@@ -270,7 +270,7 @@ void ExecutorImpl::OnBeforeProcessCreate(
     const std::string& startup_directory,
     const std::vector<std::string>& environment_strings) {
   ProcessCreationRequest creation_request(
-      NormalizePath(exe_path),
+      exe_path,
       NormalizePath(startup_directory),
       arguments,
       ComputeEnvironmentHash(environment_strings));
