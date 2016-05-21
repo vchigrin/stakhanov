@@ -83,6 +83,13 @@ void FunctionsInterceptor::NewModuleLoaded(HMODULE module) {
   }
 }
 
+void* FunctionsInterceptor::GetReplacement(void* old_addr) const {
+  const auto it_function = functions_replacements_.find(old_addr);
+  if (it_function != functions_replacements_.end())
+    return it_function->second;
+  return nullptr;
+}
+
 bool FunctionsInterceptor::Hook(
     const Intercepts& intercepts,
     HMODULE excluded_module) {

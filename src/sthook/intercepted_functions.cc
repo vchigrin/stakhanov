@@ -558,6 +558,12 @@ BOOL WINAPI NewCreateProcessW(
       process_information);
 }
 
+FARPROC WINAPI NewGetProcAddress(HMODULE module, LPCSTR proc_name) {
+  void* result = GetProcAddress(module, proc_name);
+  void* replacement = GetInterceptor()->GetReplacement(result);
+  return static_cast<FARPROC>(replacement ? replacement : result);
+}
+
 BOOL WINAPI NewGetExitCodeProcess(
     HANDLE process_handle,
     LPDWORD exit_code) {
@@ -783,6 +789,8 @@ bool InstallHooks(HMODULE current_module) {
       std::make_pair("CreateProcessW", &NewCreateProcessW));
   kernel_intercepts.insert(
       std::make_pair("GetExitCodeProcess", &NewGetExitCodeProcess));
+  kernel_intercepts.insert(
+      std::make_pair("GetProcAddress", &NewGetProcAddress));
   FunctionsInterceptor::Intercepts intercepts;
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(

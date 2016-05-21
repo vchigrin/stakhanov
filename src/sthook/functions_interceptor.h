@@ -31,6 +31,7 @@ class FunctionsInterceptor {
   void Unhook();
   // Called to patch IAT on newly loaded modules.
   void NewModuleLoaded(HMODULE module);
+  void* GetReplacement(void* old_addr) const;
 
  private:
   struct PatchInformation {
