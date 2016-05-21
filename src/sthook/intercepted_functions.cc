@@ -485,7 +485,14 @@ BOOL CreateProcessImpl(
       startup_info->dwFlags & STARTF_USESTDHANDLES) == 0;
   StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
   if (instance) {
-    append_std_streams &= instance->AreOriginalHandlesActive();
+    StdHandles::type handle_type = StdHandles::StdOutput;
+    // Child process will use same handles for stdout/stderr as currently
+    // set by SetStdHandle. So check, if these handles relate to original
+    // stdout/stderr of current process or not.
+    append_std_streams &= instance->IsStdHandle(
+        GetStdHandle(STD_OUTPUT_HANDLE), &handle_type);
+    append_std_streams &= instance->IsStdHandle(
+        GetStdHandle(STD_ERROR_HANDLE), &handle_type);
   }
 
   {
