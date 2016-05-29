@@ -18,9 +18,12 @@ struct CacheHitInfo {
 }
 
 service Executor {
-  // Returns true is it is safe to use "hoax proxy" for CreateProcess calls
-  // from this process.
-  bool Initialize(1:i32 current_pid, 2:bool is_root_process);
+  // Returns main executor command id. It can be used to register
+  // helper executors.
+  i32 InitializeMainExecutor(1:i32 current_pid, 2:bool is_root_process);
+  // Helper executor can call only functions related to process creation.
+  void InitializeHelperExecutor(1:i32 main_executor_command_id);
+  bool IsSafeToUseHoaxProxy();
   bool HookedCreateFile(1:string abs_path, 2:bool for_writing);
   void PushStdOutput(1:StdHandles handle, 2:binary data);
   void HookedRenameFile(1:string old_name_str, 2:string new_name_str);

@@ -35,6 +35,37 @@ bool PutString(HANDLE file, const std::string& data_to_put) {
   return true;
 }
 
+bool TransferBlock(HANDLE read_handle, HANDLE write_handle) {
+  uint8_t buffer[1024];
+  DWORD bytes_read = 0;
+  if (!ReadFile(
+      read_handle,
+      buffer,
+      sizeof(buffer),
+      &bytes_read,
+      NULL)) {
+    DWORD error = GetLastError();
+    if (error == ERROR_BROKEN_PIPE)
+      return true;  // Read from child process finished.
+    LOG4CPLUS_ERROR(
+        logger_, "ReadFile failed. Error " << error << " READ " << bytes_read);
+    return false;
+  }
+  DWORD bytes_written = 0;
+  BOOL success = WriteFile(
+      write_handle,
+      buffer,
+      bytes_read,
+      &bytes_written,
+      NULL);
+  if (!success || bytes_written != bytes_read) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "WriteFile failed. Error " << error);
+    return false;
+  }
+  return true;
+}
+
 struct HoaxWorkItemContext {
   std::string result_stdout;
   std::string result_stderr;
@@ -132,8 +163,7 @@ void ProcessProxyManager::NotifyHandleClosed(HANDLE handle) {
   process_handle_to_exit_code_.erase(handle);
 }
 
-bool ProcessProxyManager::CreateHoaxProxy(
-    const CacheHitInfo& cache_hit_info,
+void* ProcessProxyManager::PrepareHoaxProxy(
     HANDLE std_output_handle,
     HANDLE std_error_handle,
     PROCESS_INFORMATION* process_information) {
@@ -144,61 +174,158 @@ bool ProcessProxyManager::CreateHoaxProxy(
   if (!process_handle || !thread_handle) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "CreateEvent failed. Error " << error);
-    return false;
+    return nullptr;
   }
   process_information->dwProcessId = 0;
   process_information->dwThreadId = 0;
-  {
-    std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
-    process_handle_to_exit_code_[process_handle] = cache_hit_info.exit_code;
-  }
+
   // Write string content asynchronously, then signal event
   // that represent "process" handle.
   // We must use async write since in case using Pipes for interprocess
   // communication WriteFile call may hang until our process issues ReadFile
   // call on other side.
   std::unique_ptr<HoaxWorkItemContext> ctx(new HoaxWorkItemContext);
-  ctx->result_stdout = cache_hit_info.result_stdout;
-  ctx->result_stderr = cache_hit_info.result_stderr;
   // We must duplicate handles since caller can close them immediately
   // after CreateProcess returns (since these handles already "passed" to
   // child process).
   HANDLE current_process = GetCurrentProcess();
-  if (!DuplicateHandle(
-      current_process,
-      std_output_handle,
-      current_process,
-      &ctx->std_output_handle,
-      0,
-      FALSE,
-      DUPLICATE_SAME_ACCESS)) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "DuplicateHandle failed. Error " << error);
-    return false;
+  if (std_output_handle != NULL && std_output_handle != INVALID_HANDLE_VALUE) {
+    if (!DuplicateHandle(
+        current_process,
+        std_output_handle,
+        current_process,
+        &ctx->std_output_handle,
+        0,
+        FALSE,
+        DUPLICATE_SAME_ACCESS)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_WARN(logger_, "DuplicateHandle failed. Error " << error);
+      // Some process may pass invalid handles here - we should not fail
+      // entire CreateProcess call.
+      ctx->std_output_handle = NULL;
+    }
+  } else {
+    ctx->std_output_handle = NULL;
   }
-  if (!DuplicateHandle(
-      current_process,
-      std_error_handle,
-      current_process,
-      &ctx->std_error_handle,
-      0,
-      FALSE,
-      DUPLICATE_SAME_ACCESS)) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "DuplicateHandle failed. Error " << error);
-    return false;
+  if (std_error_handle != NULL && std_error_handle != INVALID_HANDLE_VALUE) {
+    if (!DuplicateHandle(
+        current_process,
+        std_error_handle,
+        current_process,
+        &ctx->std_error_handle,
+        0,
+        FALSE,
+        DUPLICATE_SAME_ACCESS)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_WARN(logger_, "DuplicateHandle failed. Error " << error);
+      // Some process may pass invalid handles here - we should not fail
+      // entire CreateProcess call.
+      ctx->std_error_handle = NULL;
+    }
+  } else {
+    ctx->std_error_handle = NULL;
   }
   ctx->process_handle = process_handle;
   ctx->thread_handle = thread_handle;
-  auto* ctx_ptr = ctx.release();
+  return ctx.release();
+}
+
+void ProcessProxyManager::SyncFinishHoaxProxy(
+    void* hoax_proxy_id,
+    const CacheHitInfo& cache_hit_info) {
+  HoaxWorkItemContext* ctx = static_cast<HoaxWorkItemContext*>(hoax_proxy_id);
+  ctx->result_stdout = cache_hit_info.result_stdout;
+  ctx->result_stderr = cache_hit_info.result_stderr;
+  {
+    std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
+    process_handle_to_exit_code_[
+        ctx->process_handle] = cache_hit_info.exit_code;
+  }
+  HoaxThreadPoolProc(ctx);
+}
+
+void ProcessProxyManager::SyncDriveRealProcess(
+    void* hoax_proxy_id,
+    HANDLE process_handle,
+    const base::ScopedHandle& read_stdout_handle,
+    const base::ScopedHandle& read_stderr_handle) {
+  std::unique_ptr<HoaxWorkItemContext> ctx(
+      static_cast<HoaxWorkItemContext*>(hoax_proxy_id));
+  HANDLE wait_handles[3];
+  DWORD handle_count = 0;
+  // Ensure stream handles go first, so in case process termination
+  // they will be signales first.
+  if (read_stdout_handle.IsValid() && ctx->std_output_handle != NULL)
+    wait_handles[handle_count++] = read_stdout_handle.Get();
+  if (read_stderr_handle.IsValid() && ctx->std_error_handle != NULL)
+    wait_handles[handle_count++] = read_stderr_handle.Get();
+  wait_handles[handle_count++] = process_handle;
+  bool completed = false;
+  while (!completed) {
+    DWORD wait_result = WaitForMultipleObjects(
+        handle_count, wait_handles, FALSE, INFINITE);
+    if (wait_result == WAIT_FAILED) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(
+        logger_, "WaitForMultipleObjects failed. Error " << error);
+      return;
+    }
+    DWORD index = wait_result - WAIT_OBJECT_0;
+    if (wait_handles[index] == read_stdout_handle.Get()) {
+      if (!TransferBlock(read_stdout_handle.Get(), ctx->std_output_handle))
+        return;
+    }
+    if (wait_handles[index] == read_stderr_handle.Get()) {
+      if (!TransferBlock(read_stderr_handle.Get(), ctx->std_error_handle))
+        return;
+    }
+    if (wait_handles[index] == process_handle) {
+      DWORD exit_code = 0;
+      if (!GetExitCodeProcess(process_handle, &exit_code)) {
+        DWORD error = GetLastError();
+        LOG4CPLUS_ERROR(
+            logger_, "GetExitCodeProcess failed. Error " << error);
+        return;
+      }
+      {
+        std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
+        process_handle_to_exit_code_[ctx->process_handle] = exit_code;
+      }
+      completed = true;
+      SetEvent(ctx->process_handle);
+      SetEvent(ctx->thread_handle);
+    }
+  }
+}
+
+bool ProcessProxyManager::CreateHoaxProxy(
+    const CacheHitInfo& cache_hit_info,
+    HANDLE std_output_handle,
+    HANDLE std_error_handle,
+    PROCESS_INFORMATION* process_information) {
+  HoaxWorkItemContext* ctx = static_cast<HoaxWorkItemContext*>(
+      PrepareHoaxProxy(
+          std_output_handle,
+          std_error_handle,
+          process_information));
+  if (!ctx)
+    return false;
+  ctx->result_stdout = cache_hit_info.result_stdout;
+  ctx->result_stderr = cache_hit_info.result_stderr;
   if (!QueueUserWorkItem(
       HoaxThreadPoolProc,
-      ctx_ptr,
+      ctx,
       WT_EXECUTEDEFAULT)) {
     DWORD error = GetLastError();
+
     LOG4CPLUS_ERROR(logger_, "QueueUserWorkItem failed. Error " << error);
-    delete ctx_ptr;
+    delete ctx;
     return false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
+    process_handle_to_exit_code_[
+      ctx->process_handle] = cache_hit_info.exit_code;
   }
   return true;
 }

@@ -57,6 +57,11 @@ class ScopedHandle {
     value_ = NULL;
   }
 
+  HANDLE* Receive() {
+    Close();
+    return &value_;
+  }
+
  private:
   HANDLE value_;
 };

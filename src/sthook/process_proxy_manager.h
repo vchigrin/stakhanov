@@ -44,6 +44,22 @@ class ProcessProxyManager {
   bool TryGetExitCodeProcess(HANDLE process_handle, DWORD* exit_code);
   void NotifyHandleClosed(HANDLE handle);
 
+  void* PrepareHoaxProxy(
+      HANDLE std_output_handle,
+      HANDLE std_error_handle,
+      PROCESS_INFORMATION* process_information);
+  void SyncFinishHoaxProxy(
+      void* hoax_proxy_id,
+      const CacheHitInfo& cache_hit_info);
+  void SyncDriveRealProcess(
+      void* hoax_proxy_id,
+      HANDLE process_handle,
+      const base::ScopedHandle& read_stdout_handle,
+      const base::ScopedHandle& read_stderr_handle);
+  bool is_safe_to_use_hoax_proxy() const {
+    return is_safe_to_use_hoax_proxy_;
+  }
+
  private:
   bool CreateHoaxProxy(
       const CacheHitInfo& cache_hit_info,

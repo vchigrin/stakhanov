@@ -44,7 +44,10 @@ void ExecutorFactory::releaseHandler(ExecutorIf* handler) {
   {
     std::lock_guard<std::mutex> lock(instance_lock_);
     auto it = active_executors_.find(executor->command_id());
-    if (it != active_executors_.end()) {
+    if (it != active_executors_.end() &&
+       // Now it is OK to have multiple executors with same command id,
+       // but only main executor registered in active_executors_.
+       it->second.get() == executor) {
       active_executors_.erase(it);
     } else {
       // This executor is not "registered" so

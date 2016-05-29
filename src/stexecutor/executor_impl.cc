@@ -64,11 +64,14 @@ ExecutorImpl::ExecutorImpl(
       executing_engine_(executing_engine),
       executor_factory_(executor_factory),
       files_filter_(files_filter),
-      files_infos_filled_(false) {
+      files_infos_filled_(false),
+      is_safe_to_use_hoax_proxy_(false),
+      is_helper_executor_(false) {
 }
 
 bool ExecutorImpl::HookedCreateFile(
     const std::string& abs_path, const bool for_writing) {
+  LOG4CPLUS_ASSERT(logger_, !is_helper_executor_);
   boost::filesystem::path norm_path = NormalizePath(abs_path);
   if (norm_path.empty()) {  // May be if path is "invalid" for intercept
     return true;
@@ -113,6 +116,7 @@ bool ExecutorImpl::HookedCreateFile(
 void ExecutorImpl::HookedRenameFile(
     const std::string& old_name_str,
     const std::string& new_name_str) {
+  LOG4CPLUS_ASSERT(logger_, !is_helper_executor_);
   boost::filesystem::path norm_old_path = NormalizePath(old_name_str);
   boost::filesystem::path norm_new_path = NormalizePath(new_name_str);
   auto it_output = output_files_.find(norm_old_path);
@@ -147,7 +151,7 @@ void ExecutorImpl::HookedRenameFile(
   }
 }
 
-bool ExecutorImpl::Initialize(
+int32_t ExecutorImpl::InitializeMainExecutor(
     const int32_t current_pid, const bool is_root_process) {
   process_handle_ = base::ScopedHandle(
       OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE,
@@ -156,7 +160,6 @@ bool ExecutorImpl::Initialize(
     DWORD error_code = GetLastError();
     LOG4CPLUS_ERROR(logger_, "OpenProcess failed. Error " << error_code);
   }
-  bool is_safe_to_use_hoax_proxy = false;
   if (is_root_process) {
     command_info_.command_id = ExecutingEngine::kRootCommandId;
   } else {
@@ -165,12 +168,25 @@ bool ExecutorImpl::Initialize(
          current_pid,
          &command_info_.command_id,
          &command_ids_should_append,
-         &is_safe_to_use_hoax_proxy);
+         &is_safe_to_use_hoax_proxy_);
      executors_should_append_std_streams_ = executor_factory_->GetExecutors(
          command_ids_should_append);
   }
   executor_factory_->RegisterExecutor(command_id(), this);
-  return is_safe_to_use_hoax_proxy;
+  return command_info_.command_id;
+}
+
+void ExecutorImpl::InitializeHelperExecutor(
+    const int32_t main_executor_command_id) {
+  is_helper_executor_ = true;
+  command_info_.command_id = main_executor_command_id;
+  // Only main executors should be registered in executor_factory,
+  // so don't do it here. We do need append std streams only to main executors,
+  // and registration used only for this.
+}
+
+bool ExecutorImpl::IsSafeToUseHoaxProxy() {
+  return is_safe_to_use_hoax_proxy_;
 }
 
 void ExecutorImpl::OnSuspendedProcessCreated(
@@ -192,6 +208,7 @@ void ExecutorImpl::OnSuspendedProcessCreated(
 }
 
 void ExecutorImpl::OnFileDeleted(const std::string& abs_path) {
+  LOG4CPLUS_ASSERT(logger_, !is_helper_executor_);
   boost::filesystem::path norm_path = NormalizePath(abs_path);
   // Need to avoid attempts to hash temp. files.
   output_files_.erase(norm_path);
@@ -217,6 +234,7 @@ void ExecutorImpl::OnBeforeExitProcess() {
 }
 
 void ExecutorImpl::FillFileInfos() {
+  LOG4CPLUS_ASSERT(logger_, !is_helper_executor_);
   files_infos_filled_ = true;
   BuildDirectoryState* build_dir_state = executing_engine_->build_dir_state();
   FilesStorage* files_storage = executing_engine_->files_storage();
@@ -284,6 +302,7 @@ void ExecutorImpl::OnBeforeProcessCreate(
 
 void ExecutorImpl::PushStdOutput(
     const StdHandles::type handle, const std::string& data) {
+  LOG4CPLUS_ASSERT(logger_, !is_helper_executor_);
   {
     std::lock_guard<std::mutex> std_handles_lock(std_handles_lock_);
     if (handle == StdHandles::StdOutput)
@@ -297,6 +316,8 @@ void ExecutorImpl::PushStdOutput(
 }
 
 void ExecutorImpl::FillExitCode() {
+  if (is_helper_executor_)
+    return;
   // Root process - stlaunch.exe is a special, we don't save results for it
   // (actually it is meaningless - only results of child processes
   // (on many levels) of stlaunch can be retrieved from cache).

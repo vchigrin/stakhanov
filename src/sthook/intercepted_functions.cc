@@ -39,6 +39,7 @@ namespace {
 const wchar_t kStLaunchExeName[] = L"stlaunch.exe";
 
 std::mutex g_executor_call_mutex;
+int32_t g_main_executor_command_id;
 
 typedef BOOL (WINAPI *LPCREATE_PROCESS_W)(
     LPCWSTR application_name,
@@ -146,35 +147,58 @@ sthook::FunctionsInterceptor* GetInterceptor() {
   return g_interceptor;
 }
 
-ExecutorIf* GetExecutor() {
+std::unique_ptr<ExecutorClient> CreateInitializedExecutor(bool is_main) {
   using apache::thrift::TException;
   using apache::thrift::protocol::TBinaryProtocol;
   using apache::thrift::transport::TBufferedTransport;
   using apache::thrift::transport::TPipe;
 
+  std::unique_ptr<ExecutorClient> result_client;
+  boost::shared_ptr<TPipe> socket(new TPipe(sthook::kExecutorPipeName));
+  boost::shared_ptr<TBufferedTransport> transport(
+      new TBufferedTransport(socket));
+  boost::shared_ptr<TBinaryProtocol> protocol(
+      new TBinaryProtocol(transport));
+  result_client.reset(new ExecutorClient(protocol));
+  transport->open();
+  if (is_main) {
+    boost::filesystem::path current_exe = base::GetCurrentExecutablePath();
+    const bool is_st_launch = (current_exe.filename() == kStLaunchExeName);
+    g_main_executor_command_id = result_client->InitializeMainExecutor(
+        GetCurrentProcessId(),
+        is_st_launch);
+  } else {
+    result_client->InitializeHelperExecutor(
+        g_main_executor_command_id);
+  }
+  return result_client;
+}
+
+ExecutorIf* GetExecutor() {
   static std::unique_ptr<ExecutorClient> g_executor;
-  static bool g_initialize_finished;
+  static bool inside_initialize;
   if (!g_executor) {
+    if (inside_initialize)
+      return nullptr;  // Avoid infinite recursion from hooked CreateFile
+    inside_initialize = true;
     try {
-      boost::shared_ptr<TPipe> socket(new TPipe(sthook::kExecutorPipeName));
-      boost::shared_ptr<TBufferedTransport> transport(
-          new TBufferedTransport(socket));
-      boost::shared_ptr<TBinaryProtocol> protocol(
-          new TBinaryProtocol(transport));
-      g_executor.reset(new ExecutorClient(protocol));
-      transport->open();
-      g_initialize_finished = true;
-    } catch (TException& ex) {
+      g_executor = CreateInitializedExecutor(true);
+      inside_initialize = false;
+    } catch (std::exception& ex) {
+      inside_initialize = false;
       LOG4CPLUS_FATAL(logger_, "Thrift initialization failure " << ex.what());
-      g_executor.reset();
       throw;
     }
   }
-  if (!g_initialize_finished)
-    return nullptr;
   return g_executor.get();
 }
 
+ExecutorIf* GetExecutorForCurrentThread() {
+  static thread_local std::unique_ptr<ExecutorClient> executor;
+  if (!executor)
+    executor = CreateInitializedExecutor(false);
+  return executor.get();
+}
 
 NTSTATUS NTAPI NewNtCreateFile(
     PHANDLE file_handle,
@@ -335,50 +359,57 @@ std::vector<std::wstring> SplitCommandLine(const char* command_line) {
   return SplitCommandLineWide(command_line_wide.c_str());
 }
 
-std::vector<std::string> GetEnvironmentStringsAsUTF8() {
-  const wchar_t* env_block = GetEnvironmentStringsW();
-  if (!env_block) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "GetEnvironmentStringsW failed, error " << error);
-    return std::vector<std::string>();
+template<typename CHAR_TYPE>
+size_t EnvBlockCharLength(const CHAR_TYPE* env_block) {
+  const CHAR_TYPE* p = env_block;
+  while (*p) {
+    p += (base::StringCharLen(p) + 1);
   }
-  std::vector<std::string> result;
-  while (*env_block) {
-    std::wstring env_string = env_block;
-    env_block += (env_string.length() + 1);
-    result.push_back(base::ToUTF8FromWide(env_string));
-  }
-  return result;
+  return p - env_block;
 }
 
-std::string ComputeEnvironmentHash() {
+std::string ComputeEnvironmentHash(void* may_be_arg_environ, bool is_unicode) {
   static thread_local std::vector<wchar_t> last_seen_env_block;
   static thread_local std::string last_hash;
-
-  const wchar_t* env_block = GetEnvironmentStringsW();
-  if (!env_block) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "GetEnvironmentStringsW failed, error " << error);
-    return std::string();
-  }
-  const wchar_t* p = env_block;
-  while (*p) {
-    p += (wcslen(p) + 1);
-  }
-  std::vector<wchar_t> current_env_block(env_block, p);
-  if (current_env_block.size() == last_seen_env_block.size() &&
+  std::vector<std::wstring> strings;
+  std::vector<wchar_t> current_env_block;
+  if (may_be_arg_environ) {
+    if (is_unicode) {
+      const wchar_t* p = static_cast<const wchar_t*>(may_be_arg_environ);
+      while (*p) {
+        strings.emplace_back(p);
+        p += (wcslen(p) + 1);
+      }
+    } else {
+      const char* p = static_cast<const char*>(may_be_arg_environ);
+      while (*p) {
+        strings.emplace_back(base::ToWideFromANSI(p));
+        p += (strlen(p) + 1);
+      }
+    }
+  } else {
+    const wchar_t* env_block = GetEnvironmentStringsW();
+    if (!env_block) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(
+          logger_, "GetEnvironmentStringsW failed, error " << error);
+      return std::string();
+    }
+    size_t len = EnvBlockCharLength(env_block);
+    current_env_block = std::vector<wchar_t>(env_block, env_block + len);
+    if (current_env_block.size() == last_seen_env_block.size() &&
       std::equal(
           current_env_block.begin(),
           current_env_block.end(),
           last_seen_env_block.begin())) {
-    return last_hash;
-  }
+      return last_hash;
+    }
 
-  std::vector<std::wstring> strings;
-  p = env_block;
-  while (*p) {
-    strings.emplace_back(p);
-    p += (wcslen(p) + 1);
+    const wchar_t* p = env_block;
+    while (*p) {
+      strings.emplace_back(p);
+      p += (wcslen(p) + 1);
+    }
   }
 
   std::sort(strings.begin(), strings.end());
@@ -402,9 +433,232 @@ std::string ComputeEnvironmentHash() {
   std::vector<uint8_t> digest(hasher.DigestSize());
   hasher.Final(&digest[0]);
   std::string result = base::BytesToHexString(digest);
-  last_seen_env_block = std::move(current_env_block);
-  last_hash = result;
+  if (!may_be_arg_environ) {
+    // Cache only current thread env. blocks.
+    last_seen_env_block = std::move(current_env_block);
+    last_hash = result;
+  }
   return result;
+}
+
+bool ShouldAppendStdStreams(DWORD startup_info_flags) {
+  bool append_std_streams = (
+      startup_info_flags & STARTF_USESTDHANDLES) == 0;
+  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
+  if (instance) {
+    StdHandles::type handle_type = StdHandles::StdOutput;
+    // Child process will use same handles for stdout/stderr as currently
+    // set by SetStdHandle. So check, if these handles relate to original
+    // stdout/stderr of current process or not.
+    append_std_streams &= instance->IsStdHandle(
+        GetStdHandle(STD_OUTPUT_HANDLE), &handle_type);
+    append_std_streams &= instance->IsStdHandle(
+        GetStdHandle(STD_ERROR_HANDLE), &handle_type);
+  }
+  return append_std_streams;
+}
+
+class CreateProcessInvoker {
+ public:
+  virtual BOOL InvokeActualFunction(
+      PROCESS_INFORMATION* process_information) = 0;
+  virtual const std::string& environment_hash() const = 0;
+  virtual bool IsStdStreamsUsed() const = 0;
+  virtual void ReplaceStdStreamHandles(
+      HANDLE stdinput_handle,
+      HANDLE stdout_handle, HANDLE stderr_handle) = 0;
+  virtual ~CreateProcessInvoker() {}
+};
+
+template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
+class CreateProcessInvokerImpl : public CreateProcessInvoker {
+ public:
+  CreateProcessInvokerImpl(
+    FUNCTION actual_function,
+    const CHAR_TYPE* application_name,
+    const CHAR_TYPE* command_line,
+    LPSECURITY_ATTRIBUTES process_attributes,
+    LPSECURITY_ATTRIBUTES thread_attributes,
+    BOOL inherit_handles,
+    DWORD creation_flags,
+    LPVOID environment,
+    const CHAR_TYPE* current_directory,
+    STARTUPINFO_TYPE* startup_info)
+      : actual_function_(actual_function),
+        application_name_(CopyStringIfNeed(application_name)),
+        command_line_(CopyStringIfNeed(command_line)),
+        process_attributes_(CopyStructIfNeed(process_attributes)),
+        thread_attributes_(CopyStructIfNeed(thread_attributes)),
+        inherit_handles_(inherit_handles),
+        creation_flags_(creation_flags),
+        current_directory_(CopyStringIfNeed(current_directory)) {
+    if (environment) {
+      size_t env_block_byte_size;
+      if (creation_flags & CREATE_UNICODE_ENVIRONMENT) {
+        env_block_byte_size = (EnvBlockCharLength(
+            static_cast<const wchar_t*>(environment)) + 1) * sizeof(wchar_t);
+      } else {
+        env_block_byte_size = EnvBlockCharLength(
+            static_cast<const char*>(environment)) + 1;
+      }
+      environment_.reset(new uint8_t[env_block_byte_size]);
+      memcpy(environment_.get(), environment, env_block_byte_size);
+    }
+
+    environment_hash_ = ComputeEnvironmentHash(
+        environment, creation_flags & CREATE_UNICODE_ENVIRONMENT);
+    // NOTE, startup_info pointer may be greater then sizeof(STARTUPINFO)
+    // it may be STARTUPINFOEX, so use byte count pointer to avoid slicing.
+    startup_info_buffer_.reset(new uint8_t[startup_info->cb]);
+    memcpy(startup_info_buffer_.get(), startup_info, startup_info->cb);
+  }
+
+  BOOL InvokeActualFunction(
+      PROCESS_INFORMATION* process_information) override {
+    return actual_function_(
+        application_name_.get(),
+        command_line_.get(),
+        process_attributes_.get(),
+        thread_attributes_.get(),
+        inherit_handles_,
+        creation_flags_,
+        environment_.get(),
+        current_directory_.get(),
+        startup_info(),
+        process_information);
+  }
+
+  const std::string& environment_hash() const override {
+    return environment_hash_;
+  }
+
+  bool IsStdStreamsUsed() const override {
+    return startup_info()->dwFlags & STARTF_USESTDHANDLES;
+  }
+
+  void ReplaceStdStreamHandles(
+      HANDLE stdinput_handle,
+      HANDLE stdout_handle, HANDLE stderr_handle) {
+    startup_info()->hStdInput = stdinput_handle;
+    startup_info()->hStdOutput = stdout_handle;
+    startup_info()->hStdError = stderr_handle;
+  }
+
+ private:
+  static std::unique_ptr<CHAR_TYPE[]> CopyStringIfNeed(const CHAR_TYPE* str) {
+    if (!str)
+      return nullptr;
+    size_t len = base::StringCharLen(str);
+    ++len;  // For zero terminator.
+    std::unique_ptr<CHAR_TYPE[]> result(new CHAR_TYPE[len]);
+    memcpy(result.get(), str, len * sizeof(CHAR_TYPE));
+    return result;
+  }
+
+  template<typename T>
+  static std::unique_ptr<T> CopyStructIfNeed(const T* ptr) {
+    if (!ptr)
+      return nullptr;
+    std::unique_ptr<T> result(new T);
+    *result = *ptr;
+    return result;
+  }
+
+  STARTUPINFO_TYPE* startup_info() {
+    return reinterpret_cast<STARTUPINFO_TYPE*>(startup_info_buffer_.get());
+  }
+
+  const STARTUPINFO_TYPE* startup_info() const {
+    return reinterpret_cast<const STARTUPINFO_TYPE*>(
+        startup_info_buffer_.get());
+  }
+
+  FUNCTION actual_function_;
+  std::unique_ptr<CHAR_TYPE[]> application_name_;
+  std::unique_ptr<CHAR_TYPE[]> command_line_;
+  std::unique_ptr<SECURITY_ATTRIBUTES> process_attributes_;
+  std::unique_ptr<SECURITY_ATTRIBUTES> thread_attributes_;
+  BOOL inherit_handles_;
+  DWORD creation_flags_;
+  std::unique_ptr<uint8_t[]> environment_;
+  std::string environment_hash_;
+  std::unique_ptr<CHAR_TYPE[]> current_directory_;
+  std::unique_ptr<uint8_t> startup_info_buffer_;
+};
+
+struct CreateProcessThreadPoolProcCtx {
+  std::unique_ptr<CreateProcessInvoker> invoker;
+  std::string exe_path;
+  std::string startup_dir_utf8;
+  std::vector<std::string> arguments_utf8;
+  bool append_std_streams;
+  bool request_suspended;
+  void* hoax_proxy_id;
+};
+
+DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
+  std::unique_ptr<CreateProcessThreadPoolProcCtx> ctx(
+      static_cast<CreateProcessThreadPoolProcCtx*>(ctx_ptr));
+  ExecutorIf* executor = GetExecutorForCurrentThread();
+
+  CacheHitInfo cache_hit_info;
+  executor->OnBeforeProcessCreate(
+      cache_hit_info,
+      ctx->exe_path,
+      ctx->arguments_utf8,
+      ctx->startup_dir_utf8,
+      ctx->invoker->environment_hash());
+  if (cache_hit_info.cache_hit) {
+    ProcessProxyManager::GetInstance()->SyncFinishHoaxProxy(
+        ctx->hoax_proxy_id,
+        cache_hit_info);
+    return 0;
+  }
+  PROCESS_INFORMATION process_information;
+  base::ScopedHandle read_stdout_pipe;
+  base::ScopedHandle read_stderr_pipe;
+  if (ctx->invoker->IsStdStreamsUsed()) {
+    base::ScopedHandle write_stdout_pipe;
+    base::ScopedHandle write_stderr_pipe;
+    if (!CreatePipe(
+        read_stdout_pipe.Receive(),
+        write_stdout_pipe.Receive(),
+        NULL,
+        0)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_FATAL(logger_, "CreatePipe fails, error " << error);
+      return 0;
+    }
+    if (!CreatePipe(
+        read_stderr_pipe.Receive(),
+        write_stderr_pipe.Receive(),
+        NULL,
+        0)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_FATAL(logger_, "CreatePipe fails, error " << error);
+      return 0;
+    }
+    ctx->invoker->ReplaceStdStreamHandles(
+        NULL,
+        write_stdout_pipe.Get(),
+        write_stderr_pipe.Get());
+  }
+  if (!ctx->invoker->InvokeActualFunction(&process_information))
+    return 0;
+  executor->OnSuspendedProcessCreated(
+      process_information.dwProcessId,
+      process_information.dwThreadId,
+      cache_hit_info.executor_command_id,
+      ctx->append_std_streams,
+      ctx->request_suspended);
+  ProcessProxyManager::GetInstance()->SyncDriveRealProcess(
+      ctx->hoax_proxy_id,
+      process_information.hProcess,
+      read_stdout_pipe,
+      read_stderr_pipe);
+  CloseHandle(process_information.hThread);
+  CloseHandle(process_information.hProcess);
+  return 0;
 }
 
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
@@ -420,7 +674,6 @@ BOOL CreateProcessImpl(
     const CHAR_TYPE* current_directory,
     STARTUPINFO_TYPE* startup_info,
     LPPROCESS_INFORMATION process_information) {
-  bool request_suspended = (creation_flags & CREATE_SUSPENDED) != 0;
 
   std::string exe_path;
   if (application_name) {
@@ -444,6 +697,53 @@ BOOL CreateProcessImpl(
     boost::filesystem::path current_dir = boost::filesystem::current_path();
     startup_dir_utf8 = base::ToUTF8FromWide(current_dir.wstring());
   }
+  const bool append_std_streams = ShouldAppendStdStreams(
+      startup_info->dwFlags);
+  creation_flags;
+  std::unique_ptr<CreateProcessInvoker> actual_function_invoker(
+      new CreateProcessInvokerImpl<CHAR_TYPE, STARTUPINFO_TYPE, FUNCTION>(
+          actual_function,
+          application_name,
+          command_line,
+          process_attributes,
+          thread_attributes,
+          inherit_handles,
+          creation_flags | CREATE_SUSPENDED,  // Create suspended to inject dll
+          environment,
+          current_directory,
+          startup_info));
+
+  ProcessProxyManager* proxy_manager = ProcessProxyManager::GetInstance();
+  const bool request_suspended = (creation_flags & CREATE_SUSPENDED) != 0;
+  if (proxy_manager->is_safe_to_use_hoax_proxy()) {
+    void* hoax_proxy_id = proxy_manager->PrepareHoaxProxy(
+        startup_info->hStdOutput,
+        startup_info->hStdError,
+        process_information);
+    if (!hoax_proxy_id) {
+      LOG4CPLUS_ERROR(logger_, "Failed create hoax proxy");
+      return FALSE;
+    }
+
+    CreateProcessThreadPoolProcCtx* ctx = new CreateProcessThreadPoolProcCtx;
+    ctx->invoker = std::move(actual_function_invoker);
+    ctx->hoax_proxy_id = hoax_proxy_id;
+    ctx->append_std_streams = append_std_streams;
+    ctx->request_suspended = request_suspended;
+    ctx->exe_path = std::move(exe_path);
+    ctx->startup_dir_utf8 = std::move(startup_dir_utf8);
+    ctx->arguments_utf8 = std::move(arguments_utf8);
+    if (!QueueUserWorkItem(
+        CreateProcessThreadPoolProc,
+        ctx,
+        WT_EXECUTEDEFAULT)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_FATAL(
+          logger_, "QueueUserWorkItem fails, error " << error);
+      return FALSE;
+    }
+    return TRUE;
+  }
 
   CacheHitInfo cache_hit_info;
   {
@@ -453,7 +753,7 @@ BOOL CreateProcessImpl(
         exe_path,
         arguments_utf8,
         startup_dir_utf8,
-        ComputeEnvironmentHash());
+        actual_function_invoker->environment_hash());
   }
   if (cache_hit_info.cache_hit) {
     // Cache hits should not go through all pipeline with
@@ -466,34 +766,8 @@ BOOL CreateProcessImpl(
         startup_info->hStdError,
         process_information);
   }
-  creation_flags |= CREATE_SUSPENDED;
-  if (!actual_function(
-      application_name,
-      command_line,
-      process_attributes,
-      thread_attributes,
-      inherit_handles,
-      creation_flags,
-      environment,
-      current_directory,
-      startup_info,
-      process_information)) {
+  if (!actual_function_invoker->InvokeActualFunction(process_information))
     return FALSE;
-  }
-
-  bool append_std_streams = (
-      startup_info->dwFlags & STARTF_USESTDHANDLES) == 0;
-  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
-  if (instance) {
-    StdHandles::type handle_type = StdHandles::StdOutput;
-    // Child process will use same handles for stdout/stderr as currently
-    // set by SetStdHandle. So check, if these handles relate to original
-    // stdout/stderr of current process or not.
-    append_std_streams &= instance->IsStdHandle(
-        GetStdHandle(STD_OUTPUT_HANDLE), &handle_type);
-    append_std_streams &= instance->IsStdHandle(
-        GetStdHandle(STD_ERROR_HANDLE), &handle_type);
-  }
 
   {
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
@@ -833,11 +1107,7 @@ void Initialize(HMODULE current_module) {
   if (!InstallHooks(current_module)) {
     LOG4CPLUS_ERROR(logger_, "Hook installation failed");
   }
-  boost::filesystem::path current_exe = base::GetCurrentExecutablePath();
-  const bool is_st_launch = (current_exe.filename() == kStLaunchExeName);
-  const bool is_safe_to_use_hoax_proxy = GetExecutor()->Initialize(
-      GetCurrentProcessId(),
-      is_st_launch);
+  bool is_safe_to_use_hoax_proxy = GetExecutor()->IsSafeToUseHoaxProxy();
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   ProcessProxyManager::Initialize(
       current_module,
