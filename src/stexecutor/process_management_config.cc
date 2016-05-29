@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "base/string_utils.h"
 #include "boost/property_tree/ptree.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
@@ -63,7 +64,9 @@ bool ProcessManagementConfig::ShouldDoNotTrack(
     const ProcessCreationRequest& request) const {
   // TODO(vchigrin): Allow JSON config add riles based on exe path.
   // unfortunatelly, vctip.exe has empty command line.
-  if (request.exe_path().filename() == L"vctip.exe")
+  std::wstring filename = base::WideToLower(
+      request.exe_path().filename().native());
+  if (filename == L"vctip.exe")
     return true;
   return MatchesAnyPattern(request, do_not_track_patterns_);
 }
