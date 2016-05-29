@@ -467,6 +467,7 @@ class CreateProcessInvoker {
   virtual void ReplaceStdStreamHandles(
       HANDLE stdinput_handle,
       HANDLE stdout_handle, HANDLE stderr_handle) = 0;
+  virtual void DisableHandleInheritance() = 0;
   virtual ~CreateProcessInvoker() {}
 };
 
@@ -542,6 +543,10 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     startup_info()->hStdInput = stdinput_handle;
     startup_info()->hStdOutput = stdout_handle;
     startup_info()->hStdError = stderr_handle;
+  }
+
+  void DisableHandleInheritance() override {
+    inherit_handles_ = FALSE;
   }
 
  private:
@@ -643,6 +648,12 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
         write_stdout_pipe.Get(),
         write_stderr_pipe.Get());
   }
+  // Avoid child proces accidentally catch inheritable handles to files
+  // created by another threads. This will result in unexpected errors
+  // during file deletion.
+  // This actually changes program logic, so it is very specific to
+  // "safe to hoax" processes.
+  ctx->invoker->DisableHandleInheritance();
   if (!ctx->invoker->InvokeActualFunction(&process_information))
     return 0;
   executor->OnSuspendedProcessCreated(
