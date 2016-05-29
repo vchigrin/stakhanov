@@ -199,7 +199,7 @@ void* ProcessProxyManager::PrepareHoaxProxy(
         FALSE,
         DUPLICATE_SAME_ACCESS)) {
       DWORD error = GetLastError();
-      LOG4CPLUS_WARN(logger_, "DuplicateHandle failed. Error " << error);
+      LOG4CPLUS_INFO(logger_, "DuplicateHandle failed. Error " << error);
       // Some process may pass invalid handles here - we should not fail
       // entire CreateProcess call.
       ctx->std_output_handle = NULL;
@@ -217,7 +217,7 @@ void* ProcessProxyManager::PrepareHoaxProxy(
         FALSE,
         DUPLICATE_SAME_ACCESS)) {
       DWORD error = GetLastError();
-      LOG4CPLUS_WARN(logger_, "DuplicateHandle failed. Error " << error);
+      LOG4CPLUS_INFO(logger_, "DuplicateHandle failed. Error " << error);
       // Some process may pass invalid handles here - we should not fail
       // entire CreateProcess call.
       ctx->std_error_handle = NULL;
