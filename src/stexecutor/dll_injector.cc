@@ -520,3 +520,21 @@ bool DllInjector::InjectInto(
   }
   return true;
 }
+
+bool DllInjector::Resume(int child_pid, int child_main_thread_id) {
+  base::ScopedHandle thread_handle(OpenThread(
+      THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME,
+      FALSE,
+      child_main_thread_id));
+  if (!thread_handle.IsValid()) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "OpenThread failed, error " << error);
+    return false;
+  }
+  if (ResumeThread(thread_handle.Get()) == -1) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "ResumeThread failed, error " << error);
+    return false;
+  }
+  return true;
+}

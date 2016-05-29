@@ -199,7 +199,13 @@ void ExecutorImpl::OnSuspendedProcessCreated(
   bool do_not_track = false;
   executing_engine_->AssociatePIDWithCommandId(
       child_pid, executor_command_id, append_std_streams, &do_not_track);
-  if (!do_not_track) {
+  if (do_not_track) {
+    if (!leave_suspended) {
+      if (!dll_injector_->Resume(child_pid, child_main_thread_id)) {
+        LOG4CPLUS_ERROR(logger_, "Failed resume process " << child_pid);
+      }
+    }
+  } else {
     if (!dll_injector_->InjectInto(
         child_pid, child_main_thread_id, leave_suspended)) {
       LOG4CPLUS_ERROR(logger_, "Failed inject dll into process " << child_pid);

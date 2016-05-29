@@ -31,6 +31,7 @@ class DllInjector {
       const SystemFunctionAddr nt_set_event_addr);
   bool InjectInto(
       int child_pid, int child_main_thread_id, bool leave_suspended);
+  bool Resume(int child_pid, int child_main_thread_id);
 
  private:
   const boost::filesystem::path injected_32bit_path_;
