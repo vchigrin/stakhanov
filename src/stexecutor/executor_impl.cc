@@ -359,5 +359,13 @@ void ExecutorImpl::FillExitCode() {
     }
   }
   command_info_.exit_code = exit_code;
+
+  if (exit_code != 0) {
+    // Temporary disable saving all failed commands. Theoretically there is
+    // no problem to cache them, but now we have some bugs in
+    // sthook/stexecutor, so disabling that cache may simplify developing.
+    command_info_.has_errors = true;
+  }
+
   executing_engine_->SaveCommandResults(command_info_);
 }
