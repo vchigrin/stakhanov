@@ -546,7 +546,10 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
   }
 
   void DisableHandleInheritance() override {
-    inherit_handles_ = FALSE;
+    // TODO(vchigrin): We must allow inherit hStdOutput/hStdError handles.
+    // Need to use STARTUPINFOEX. For now just allow inheritance all handles -
+    // this is not critical problem.
+    // inherit_handles_ = FALSE;
   }
 
  private:
@@ -622,13 +625,18 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
   PROCESS_INFORMATION process_information;
   base::ScopedHandle read_stdout_pipe;
   base::ScopedHandle read_stderr_pipe;
+  base::ScopedHandle write_stdout_pipe;
+  base::ScopedHandle write_stderr_pipe;
   if (ctx->invoker->IsStdStreamsUsed()) {
-    base::ScopedHandle write_stdout_pipe;
-    base::ScopedHandle write_stderr_pipe;
+    SECURITY_ATTRIBUTES security_attributes;
+    memset(&security_attributes, 0, sizeof(security_attributes));
+    security_attributes.nLength = sizeof(SECURITY_ATTRIBUTES);
+    security_attributes.bInheritHandle = TRUE;
+
     if (!CreatePipe(
         read_stdout_pipe.Receive(),
         write_stdout_pipe.Receive(),
-        NULL,
+        &security_attributes,
         0)) {
       DWORD error = GetLastError();
       LOG4CPLUS_FATAL(logger_, "CreatePipe fails, error " << error);
@@ -637,7 +645,7 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
     if (!CreatePipe(
         read_stderr_pipe.Receive(),
         write_stderr_pipe.Receive(),
-        NULL,
+        &security_attributes,
         0)) {
       DWORD error = GetLastError();
       LOG4CPLUS_FATAL(logger_, "CreatePipe fails, error " << error);
@@ -662,6 +670,8 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
       cache_hit_info.executor_command_id,
       ctx->append_std_streams,
       ctx->request_suspended);
+  write_stdout_pipe.Close();
+  write_stderr_pipe.Close();
   ProcessProxyManager::GetInstance()->SyncDriveRealProcess(
       ctx->hoax_proxy_id,
       process_information.hProcess,
