@@ -181,6 +181,35 @@ boost::property_tree::ptree LoadConfig(
   return config;
 }
 
+class CustomEventHandler : public apache::thrift::TProcessorEventHandler {
+ public:
+  virtual void handlerError(void* ctx, const char* fn_name) {
+    LOG4CPLUS_FATAL(logger_, "Exception in function " << fn_name);
+    // We do not expect any exceptions - assume it fatal and crash process.
+    std::abort();
+  }
+};
+
+class CustomExecutorProcessorFactory : public ExecutorProcessorFactory {
+ public:
+  CustomExecutorProcessorFactory(
+      const boost::shared_ptr<ExecutorIfFactory>& handler_factory)
+      : ExecutorProcessorFactory(handler_factory),
+        event_handler_(new CustomEventHandler()) { }
+
+  boost::shared_ptr<apache::thrift::TProcessor> getProcessor(
+      const apache::thrift::TConnectionInfo& conn_info) override {
+    boost::shared_ptr<apache::thrift::TProcessor> result =
+        ExecutorProcessorFactory::getProcessor(conn_info);
+    if (result)
+      result->setEventHandler(event_handler_);
+    return result;
+  }
+
+ private:
+  boost::shared_ptr<apache::thrift::TProcessorEventHandler> event_handler_;
+};
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -295,7 +324,7 @@ int main(int argc, char* argv[]) {
         it->second.as<boost::filesystem::path>());
   }
   g_server = std::make_unique<ServerType>(
-      boost::make_shared<ExecutorProcessorFactory>(executor_factory),
+      boost::make_shared<CustomExecutorProcessorFactory>(executor_factory),
       boost::make_shared<TPipeServer>(sthook::kExecutorPipeName),
       boost::make_shared<TBufferedTransportFactory>(),
       boost::make_shared<TBinaryProtocolFactory>());
