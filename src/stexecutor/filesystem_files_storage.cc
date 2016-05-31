@@ -75,6 +75,21 @@ bool LinkOrCopyFile(
   return true;
 }
 
+bool MoveTempFile(
+    const boost::filesystem::path& temp_path,
+    const boost::filesystem::path& dest_path) {
+  // Hope rename operation is atomic, so other thread will not see
+  // half-written file.
+  boost::system::error_code error;
+  boost::filesystem::rename(temp_path, dest_path, error);
+  if (error) {
+    LOG4CPLUS_ERROR(logger_, "Rename failed, error " << error);
+    boost::filesystem::remove(temp_path, error);
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 FilesystemFilesStorage::FilesystemFilesStorage(
@@ -124,12 +139,13 @@ std::string FilesystemFilesStorage::StoreFile(
   if (file_id.empty())
     return file_id;
 
-  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   boost::filesystem::path dest_path = PreparePlace(file_id);
   if (dest_path.empty())
     return std::string();
-
-  if (!LinkOrCopyFile(abs_file_path, dest_path, IsSafeToLink(abs_file_path)))
+  boost::filesystem::path temp_path = PrepareTempPath();
+  if (!LinkOrCopyFile(abs_file_path, temp_path, IsSafeToLink(abs_file_path)))
+    return std::string();
+  if (!MoveTempFile(temp_path, dest_path))
     return std::string();
   return file_id;
 }
@@ -137,7 +153,6 @@ std::string FilesystemFilesStorage::StoreFile(
 bool FilesystemFilesStorage::GetFileFromStorage(
     const std::string& storage_id,
     const boost::filesystem::path& dest_path) {
-  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   boost::filesystem::path src_path = FilePathFromId(storage_id);
   if (!boost::filesystem::exists(src_path)) {
     LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << src_path.c_str());
@@ -163,19 +178,21 @@ std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
         reinterpret_cast<const uint8_t*>(data.data()), data.length());
   }
   std::string storage_id = StorageIdFromHasher(&hasher);
-
-  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   boost::filesystem::path dest_path = PreparePlace(storage_id);
   if (dest_path.empty())
     return std::string();
-  boost::filesystem::filebuf filebuf;
-  if (!filebuf.open(dest_path, std::ios::out | std::ios::binary)) {
-    LOG4CPLUS_ERROR(logger_, "Failed open file " << dest_path.c_str());
+  boost::filesystem::path temp_path = PrepareTempPath();
+  {
+    boost::filesystem::filebuf filebuf;
+    if (!filebuf.open(temp_path, std::ios::out | std::ios::binary)) {
+      LOG4CPLUS_ERROR(logger_, "Failed open file " << dest_path.c_str());
+      return std::string();
+    }
+    if (!data.empty())
+      filebuf.sputn(data.c_str(), data.length());
+  }
+  if (!MoveTempFile(temp_path, dest_path))
     return std::string();
-  }
-  if (!data.empty()) {
-    filebuf.sputn(data.c_str(), data.length());
-  }
   return storage_id;
 }
 
@@ -184,7 +201,6 @@ std::string FilesystemFilesStorage::RetrieveContent(
   if (storage_id == empty_content_id_)
     return std::string();
   boost::filesystem::path file_path = FilePathFromId(storage_id);
-  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   if (!boost::filesystem::exists(file_path)) {
     LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << file_path.c_str());
     return std::string();
@@ -273,4 +289,11 @@ bool FilesystemFilesStorage::IsSafeToLink(
   if (ext.empty())
     return false;
   return safe_to_link_extensions_.count(ext) != 0;
+}
+
+boost::filesystem::path FilesystemFilesStorage::PrepareTempPath() const {
+  // It is important that temp files will live in same place as
+  // all storage, to ensure rename operation will be atomic.
+  boost::filesystem::path temp_name = boost::filesystem::unique_path();
+  return storage_dir_ / temp_name;
 }

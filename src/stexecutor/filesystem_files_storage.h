@@ -25,12 +25,12 @@ class FilesystemFilesStorage : public FilesStorage {
   std::string RetrieveContent(const std::string& storage_id) override;
 
  private:
-  std::mutex instance_lock_;
   void LoadConfig(const boost::property_tree::ptree& config);
   std::string GetFileHash(const boost::filesystem::path& file_path);
   boost::filesystem::path PreparePlace(const std::string& storage_id);
   boost::filesystem::path FilePathFromId(const std::string& storage_id);
   bool IsSafeToLink(const boost::filesystem::path& file_path);
+  boost::filesystem::path PrepareTempPath() const;
 
   boost::filesystem::path storage_dir_;
   // Zero means no limit.
