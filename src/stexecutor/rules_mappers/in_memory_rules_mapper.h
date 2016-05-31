@@ -5,6 +5,7 @@
 #ifndef STEXECUTOR_RULES_MAPPERS_IN_MEMORY_RULES_MAPPER_H_
 #define STEXECUTOR_RULES_MAPPERS_IN_MEMORY_RULES_MAPPER_H_
 
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -36,6 +37,7 @@ class InMemoryRulesMapper : public RulesMapperBase {
   }
 
  private:
+  std::mutex instance_lock_;
   void DumpRequestResults(
       InMemoryRequestResults* results,
       const ProcessCreationRequest& process_creation_request,

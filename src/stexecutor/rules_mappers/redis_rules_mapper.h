@@ -12,14 +12,14 @@
 #include "stexecutor/rules_mappers/rules_mapper_base.h"
 #include "stexecutor/rules_mappers/rules_hashing.h"
 
-class RedisSyncClient;
+class RedisClientPool;
 
 namespace rules_mappers {
 
 class RedisRulesMapper : public RulesMapperBase {
  public:
   RedisRulesMapper(
-      std::unique_ptr<RedisSyncClient> redis_client);
+      std::unique_ptr<RedisClientPool> redis_client_pool);
   ~RedisRulesMapper();
 
   std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
@@ -32,7 +32,7 @@ class RedisRulesMapper : public RulesMapperBase {
       std::unique_ptr<CachedExecutionResponse> response) override;
 
  private:
-  std::unique_ptr<RedisSyncClient> redis_client_;
+  std::unique_ptr<RedisClientPool> redis_client_pool_;
 };
 
 }  // namespace rules_mappers

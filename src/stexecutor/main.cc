@@ -27,10 +27,10 @@
 #include "stexecutor/filesystem_files_storage.h"
 #include "stexecutor/files_filter.h"
 #include "stexecutor/process_management_config.h"
+#include "stexecutor/redis_client_pool.h"
 #include "stexecutor/rules_mappers/in_memory_rules_mapper.h"
 #include "stexecutor/rules_mappers/redis_rules_mapper.h"
 #include "sthook/sthook_communication.h"
-#include "third_party/redisclient/src/redisclient/redissyncclient.h"
 #include "thrift/server/TThreadedServer.h"
 #include "thrift/transport/TBufferTransports.h"
 #include "thrift/transport/TPipeServer.h"
@@ -123,18 +123,6 @@ std::istream& operator >> (
   return in;
 }
 
-boost::asio::io_service& GetIOService() {
-  static std::unique_ptr<boost::asio::io_service> result;
-  if (!result) {
-    result.reset(new boost::asio::io_service());
-  }
-  return *result;
-}
-
-void OnRedisError(const std::string& error_msg) {
-  LOG4CPLUS_ERROR(logger_, "REDIS ERROR " << error_msg.c_str());
-}
-
 std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
     const boost::program_options::variables_map& option_variables) {
   RulesMapperType rules_mapper_type =
@@ -149,22 +137,14 @@ std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
     }
     return rules_mapper;
   } else if (rules_mapper_type == RulesMapperType::Redis) {
-    std::unique_ptr<RedisSyncClient> redis_client(
-        new RedisSyncClient(GetIOService()));
-
     std::string redis_ip = option_variables["redis_ip"].as<std::string>();
     int redis_port = option_variables["redis_port"].as<int>();
-    boost::asio::ip::tcp::endpoint endpoint(
-        boost::asio::ip::address::from_string(redis_ip), redis_port);
-    std::string errmsg;
-    if (!redis_client->connect(endpoint, errmsg)) {
-      std::cerr
-          << "Failed connect to the Redis server " << errmsg << std::endl;
-      return nullptr;
-    }
-    redis_client->installErrorHandler(OnRedisError);
+
+    std::unique_ptr<RedisClientPool> client_pool =
+        std::make_unique<RedisClientPool>(redis_ip, redis_port);
+
     std::unique_ptr<rules_mappers::RedisRulesMapper> rules_mapper(
-        new rules_mappers::RedisRulesMapper(std::move(redis_client)));
+        new rules_mappers::RedisRulesMapper(std::move(client_pool)));
     return rules_mapper;
   } else {
     LOG4CPLUS_ASSERT(logger_, false);

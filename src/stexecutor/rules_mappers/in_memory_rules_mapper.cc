@@ -34,6 +34,7 @@ InMemoryRulesMapper::FindCachedResults(
     const ProcessCreationRequest& process_creation_request,
     const BuildDirectoryState& build_dir_state,
     std::vector<FileInfo>* input_files) {
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
   auto it = rules_.find(request_hash);
@@ -49,6 +50,7 @@ void InMemoryRulesMapper::AddRule(
     const ProcessCreationRequest& process_creation_request,
     const std::vector<FileInfo>& input_files,
     std::unique_ptr<CachedExecutionResponse> response) {
+  std::lock_guard<std::mutex> instance_lock(instance_lock_);
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
   auto it = rules_.find(request_hash);

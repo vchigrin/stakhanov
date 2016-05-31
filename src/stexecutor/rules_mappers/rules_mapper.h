@@ -16,6 +16,7 @@ namespace rules_mappers {
 struct FileInfo;
 struct CachedExecutionResponse;
 
+// It is assumed that this class is thread-safe.
 class RulesMapper {
  public:
   virtual ~RulesMapper() {}

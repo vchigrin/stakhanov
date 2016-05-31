@@ -32,6 +32,8 @@ add_executable(stexecutor
   process_management_config.h
   redis_key_prefixes.cc
   redis_key_prefixes.h
+  redis_client_pool.cc
+  redis_client_pool.h
   rules_mappers/cached_execution_response.h
   rules_mappers/file_info.h
   rules_mappers/file_set.cc
