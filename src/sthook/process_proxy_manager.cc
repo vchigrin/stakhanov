@@ -287,6 +287,7 @@ void ProcessProxyManager::SyncDriveRealProcess(
             logger_, "GetExitCodeProcess failed. Error " << error);
         return;
       }
+      LOG4CPLUS_ASSERT(logger_, exit_code != STILL_ACTIVE);
       {
         std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
         process_handle_to_exit_code_[ctx->process_handle] = exit_code;
