@@ -41,42 +41,54 @@ ExecutingEngine::~ExecutingEngine() {
 ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
     int parent_command_id,
     const ProcessCreationRequest& process_creation_request) {
-  std::lock_guard<std::mutex> instance_lock(instance_lock_);
-  const int command_id = next_command_id_++;
   std::vector<rules_mappers::FileInfo> input_files;
   std::shared_ptr<const rules_mappers::CachedExecutionResponse>
        execution_response = rules_mapper_->FindCachedResults(
             process_creation_request, *build_dir_state_, &input_files);
-  CumulativeExecutionResponseBuilder* parent_builder = GetResponseBuilder(
-      parent_command_id);
-  LOG4CPLUS_ASSERT(
-      logger_, parent_builder || parent_command_id == kRootCommandId);
-  if (!execution_response) {
-    LOG4CPLUS_INFO(logger_,
-         "No cached response for " << process_creation_request <<
-         " Assigned id " << command_id);
 
-    std::unique_ptr<CumulativeExecutionResponseBuilder> result_builder(
-        new CumulativeExecutionResponseBuilder(
-            command_id,
-            process_creation_request,
-            parent_builder));
 
-    // Emulate "child-parent" relations between all processes in tree,
-    // So top-level process will grab all input-output files.
-    if (parent_builder) {
-      // We add association only to direct ancestor.
-      // Since parent can not complete until all it children complete, that
-      // seems safe.
-      parent_builder->ChildProcessCreated(command_id);
+  int command_id = 0;
+  {
+    std::lock_guard<std::mutex> instance_lock(instance_lock_);
+    command_id = next_command_id_++;
+    CumulativeExecutionResponseBuilder* parent_builder = GetResponseBuilder(
+        parent_command_id);
+    LOG4CPLUS_ASSERT(
+        logger_, parent_builder || parent_command_id == kRootCommandId);
+    if (!execution_response) {
+      LOG4CPLUS_INFO(logger_,
+           "No cached response for " << process_creation_request <<
+           " Assigned id " << command_id);
+
+      std::unique_ptr<CumulativeExecutionResponseBuilder> result_builder(
+          new CumulativeExecutionResponseBuilder(
+              command_id,
+              process_creation_request,
+              parent_builder));
+
+      // Emulate "child-parent" relations between all processes in tree,
+      // So top-level process will grab all input-output files.
+      if (parent_builder) {
+        // We add association only to direct ancestor.
+        // Since parent can not complete until all it children complete, that
+        // seems safe.
+        parent_builder->ChildProcessCreated(command_id);
+      }
+      active_commands_.insert(
+          std::make_pair(command_id, std::move(result_builder)));
+      return ProcessCreationResponse::BuildCacheMissResponse(command_id);
     }
-    active_commands_.insert(
-        std::make_pair(command_id, std::move(result_builder)));
-    return ProcessCreationResponse::BuildCacheMissResponse(command_id);
+    LOG4CPLUS_INFO(logger_,
+         "Using cached response for " << process_creation_request <<
+         " Assigned id " << command_id);
+    LOG4CPLUS_ASSERT(
+        logger_, parent_builder || parent_command_id == kRootCommandId);
+    if (parent_builder) {
+      parent_builder->AddChildResponse(
+          kCacheHitCommandId,
+          input_files, *execution_response);
+    }
   }
-  LOG4CPLUS_INFO(logger_,
-       "Using cached response for " << process_creation_request <<
-       " Assigned id " << command_id);
   for (const rules_mappers::FileInfo& file_info :
       execution_response->output_files) {
     build_dir_state_->TakeFileFromStorage(
@@ -87,13 +99,6 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
   for (const boost::filesystem::path& removed_path :
        execution_response->removed_rel_paths) {
     build_dir_state_->RemoveFile(removed_path);
-  }
-  LOG4CPLUS_ASSERT(
-      logger_, parent_builder || parent_command_id == kRootCommandId);
-  if (parent_builder) {
-    parent_builder->AddChildResponse(
-        kCacheHitCommandId,
-        input_files, *execution_response);
   }
   return ProcessCreationResponse::BuildCacheHitResponse(
       command_id,
