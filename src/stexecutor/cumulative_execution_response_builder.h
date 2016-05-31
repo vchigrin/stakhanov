@@ -26,6 +26,7 @@ class CumulativeExecutionResponseBuilder {
   CumulativeExecutionResponseBuilder(
       int command_id,
       const ProcessCreationRequest& request,
+      bool should_ignore_std_streams_from_children,
       CumulativeExecutionResponseBuilder* ancestor);
   void SetOwnExecutionResponse(
        const std::vector<rules_mappers::FileInfo>& input_files,
@@ -59,6 +60,9 @@ class CumulativeExecutionResponseBuilder {
   bool is_failed() const {
     return is_failed_;
   }
+  bool should_ignore_std_streams_from_children() const {
+    return should_ignore_std_streams_from_children_;\
+  }
 
   void MarkOwnCommandFailed() {
     is_failed_ = true;
@@ -91,6 +95,7 @@ class CumulativeExecutionResponseBuilder {
   std::string stderr_content_id_;
   ProcessCreationRequest process_creation_request_;
   bool should_append_std_streams_to_parent_;
+  bool should_ignore_std_streams_from_children_;
 };
 
 #endif  // STEXECUTOR_CUMULATIVE_EXECUTION_RESPONSE_BUILDER_H_

@@ -48,6 +48,15 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
 
 
   int command_id = 0;
+  bool new_request_ignores_std_streams_from_children = false;
+  bool parent_ignores_std_streams_from_children = false;
+  if (!execution_response) {
+    // This variable is used only for cache misses.
+    new_request_ignores_std_streams_from_children =
+        process_management_config_->ShouldIgnoreStdStreamsFromChildren(
+            process_creation_request);
+  }
+
   {
     std::lock_guard<std::mutex> instance_lock(instance_lock_);
     command_id = next_command_id_++;
@@ -64,6 +73,7 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
           new CumulativeExecutionResponseBuilder(
               command_id,
               process_creation_request,
+              new_request_ignores_std_streams_from_children,
               parent_builder));
 
       // Emulate "child-parent" relations between all processes in tree,
@@ -84,6 +94,8 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
     LOG4CPLUS_ASSERT(
         logger_, parent_builder || parent_command_id == kRootCommandId);
     if (parent_builder) {
+      parent_ignores_std_streams_from_children =
+          parent_builder->should_ignore_std_streams_from_children();
       parent_builder->AddChildResponse(
           kCacheHitCommandId,
           input_files, *execution_response);
@@ -100,11 +112,19 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
        execution_response->removed_rel_paths) {
     build_dir_state_->RemoveFile(removed_path);
   }
+  std::string stdout_content, stderr_content;
+
+  if (!parent_ignores_std_streams_from_children) {
+      stdout_content = files_storage_->RetrieveContent(
+          execution_response->stdout_content_id);
+      stderr_content = files_storage_->RetrieveContent(
+          execution_response->stderr_content_id);
+  }
   return ProcessCreationResponse::BuildCacheHitResponse(
       command_id,
       execution_response->exit_code,
-      files_storage_->RetrieveContent(execution_response->stdout_content_id),
-      files_storage_->RetrieveContent(execution_response->stderr_content_id));
+      std::move(stdout_content),
+      std::move(stderr_content));
 }
 
 void ExecutingEngine::SaveCommandResults(
@@ -123,10 +143,21 @@ void ExecutingEngine::SaveCommandResults(
   if (command_info.has_errors) {
     response_builder->MarkOwnCommandFailed();
   } else {
-    std::string stdout_id = files_storage_->StoreContent(
-        command_info.result_stdout);
-    std::string stderr_id = files_storage_->StoreContent(
-        command_info.result_stderr);
+    std::string stdout_id, stderr_id;
+
+    CumulativeExecutionResponseBuilder* parent_builder =
+        response_builder->ancestor();
+    if (parent_builder &&
+        parent_builder->should_ignore_std_streams_from_children()) {
+      // During cache hit we will ignore stdout/stderr in any case,
+      // so just drop them before save.
+      stdout_id = files_storage_->StoreContent(std::string());
+      stderr_id = stdout_id;
+    } else {
+      stdout_id = files_storage_->StoreContent(command_info.result_stdout);
+      stderr_id = files_storage_->StoreContent(command_info.result_stderr);
+    }
+
     std::unique_ptr<rules_mappers::CachedExecutionResponse> execution_response(
         new rules_mappers::CachedExecutionResponse(
             command_info.output_files,

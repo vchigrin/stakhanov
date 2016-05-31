@@ -32,6 +32,14 @@
       {
         "command_line_patterns": [ "^.*yakuza(\\.exe)?$" ]
       }
+    ],
+    "ignore_std_streams_from_children": [
+      {
+        "command_line_patterns": [ "^.*ninja(\\.exe)?$" ]
+      },
+      {
+        "command_line_patterns": [ "^.*yakuza(\\.exe)?$" ]
+      }
     ]
   },
   "files_storage": {

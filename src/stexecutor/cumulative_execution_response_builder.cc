@@ -23,6 +23,7 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
 CumulativeExecutionResponseBuilder::CumulativeExecutionResponseBuilder(
     int command_id,
     const ProcessCreationRequest& request,
+    bool should_ignore_std_streams_from_children,
     CumulativeExecutionResponseBuilder* ancestor)
     : exit_code_(0),
       own_process_completed_(false),
@@ -30,7 +31,9 @@ CumulativeExecutionResponseBuilder::CumulativeExecutionResponseBuilder(
       command_id_(command_id),
       ancestor_(ancestor),
       process_creation_request_(request),
-      should_append_std_streams_to_parent_(false) {
+      should_append_std_streams_to_parent_(false),
+      should_ignore_std_streams_from_children_(
+          should_ignore_std_streams_from_children) {
 }
 
 void CumulativeExecutionResponseBuilder::SetOwnExecutionResponse(

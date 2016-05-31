@@ -76,6 +76,12 @@ bool ProcessManagementConfig::ShouldUseHoaxProxy(
   return MatchesAnyPattern(request, use_hoax_proxy_patterns_);
 }
 
+bool ProcessManagementConfig::ShouldIgnoreStdStreamsFromChildren(
+    const ProcessCreationRequest& request) const {
+  return MatchesAnyPattern(
+      request, ignore_std_streams_from_children_patterns_);
+}
+
 void ProcessManagementConfig::LoadConfig(
     const boost::property_tree::ptree& config) {
   LoadPatternsByPath(
@@ -84,6 +90,9 @@ void ProcessManagementConfig::LoadConfig(
       config, "process_rules.do_not_track", &do_not_track_patterns_);
   LoadPatternsByPath(
       config, "process_rules.use_hoax_proxy", &use_hoax_proxy_patterns_);
+  LoadPatternsByPath(
+      config, "process_rules.ignore_std_streams_from_children",
+      &ignore_std_streams_from_children_patterns_);
 }
 
 void ProcessManagementConfig::LoadPatternsByPath(

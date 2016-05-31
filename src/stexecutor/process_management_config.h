@@ -24,6 +24,8 @@ class ProcessManagementConfig {
       const ProcessCreationRequest& parent_request) const;
   bool ShouldDoNotTrack(const ProcessCreationRequest& request) const;
   bool ShouldUseHoaxProxy(const ProcessCreationRequest& request) const;
+  bool ShouldIgnoreStdStreamsFromChildren(
+      const ProcessCreationRequest& request) const;
 
  private:
   struct ProcessMatchPattern {
@@ -52,6 +54,7 @@ class ProcessManagementConfig {
   std::vector<ProcessMatchPattern> stick_to_parent_patterns_;
   std::vector<ProcessMatchPattern> do_not_track_patterns_;
   std::vector<ProcessMatchPattern> use_hoax_proxy_patterns_;
+  std::vector<ProcessMatchPattern> ignore_std_streams_from_children_patterns_;
 };
 
 #endif  // STEXECUTOR_PROCESS_MANAGEMENT_CONFIG_H_
