@@ -69,29 +69,21 @@ bool TransferBlock(HANDLE read_handle, HANDLE write_handle) {
 struct HoaxWorkItemContext {
   std::string result_stdout;
   std::string result_stderr;
-  HANDLE std_output_handle = NULL;
-  HANDLE std_error_handle = NULL;
-  HANDLE process_handle = NULL;
-  HANDLE thread_handle = NULL;
-
-  HoaxWorkItemContext() {}
-
-  ~HoaxWorkItemContext() {
-    if (std_output_handle)
-      CloseHandle(std_output_handle);
-    if (std_error_handle)
-      CloseHandle(std_error_handle);
-    // process_handle and thread_handle should be closed by our
-    // client process.
-  }
+  base::ScopedHandle std_output_handle;
+  base::ScopedHandle std_error_handle;
+  base::ScopedHandle process_handle;
+  base::ScopedHandle thread_handle;
+  // Owned and closed by our client. We have no right to invoke any
+  // "handle" functions on it, including CloseHandle().
+  void* client_process_handle = nullptr;
 };
 
 DWORD CALLBACK HoaxThreadPoolProc(void* param) {
   HoaxWorkItemContext* ctx = static_cast<HoaxWorkItemContext*>(param);
-  PutString(ctx->std_output_handle, ctx->result_stdout);
-  PutString(ctx->std_error_handle, ctx->result_stderr);
-  SetEvent(ctx->process_handle);
-  SetEvent(ctx->thread_handle);
+  PutString(ctx->std_output_handle.Get(), ctx->result_stdout);
+  PutString(ctx->std_error_handle.Get(), ctx->result_stderr);
+  SetEvent(ctx->process_handle.Get());
+  SetEvent(ctx->thread_handle.Get());
   delete ctx;
   return 0;
 }
@@ -167,15 +159,15 @@ void* ProcessProxyManager::PrepareHoaxProxy(
     HANDLE std_output_handle,
     HANDLE std_error_handle,
     PROCESS_INFORMATION* process_information) {
-  HANDLE process_handle = CreateEvent(NULL, FALSE, FALSE, NULL);
-  HANDLE thread_handle = CreateEvent(NULL, FALSE, FALSE, NULL);
-  process_information->hProcess = process_handle;
-  process_information->hThread = thread_handle;
-  if (!process_handle || !thread_handle) {
+  base::ScopedHandle process_handle(CreateEvent(NULL, FALSE, FALSE, NULL));
+  base::ScopedHandle thread_handle(CreateEvent(NULL, FALSE, FALSE, NULL));
+  if (!process_handle.IsValid() || !thread_handle.IsValid()) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "CreateEvent failed. Error " << error);
     return nullptr;
   }
+  process_information->hProcess = process_handle.Get();
+  process_information->hThread = thread_handle.Get();
   process_information->dwProcessId = 0;
   process_information->dwThreadId = 0;
 
@@ -194,7 +186,7 @@ void* ProcessProxyManager::PrepareHoaxProxy(
         current_process,
         std_output_handle,
         current_process,
-        &ctx->std_output_handle,
+        ctx->std_output_handle.Receive(),
         0,
         FALSE,
         DUPLICATE_SAME_ACCESS)) {
@@ -202,17 +194,14 @@ void* ProcessProxyManager::PrepareHoaxProxy(
       LOG4CPLUS_INFO(logger_, "DuplicateHandle failed. Error " << error);
       // Some process may pass invalid handles here - we should not fail
       // entire CreateProcess call.
-      ctx->std_output_handle = NULL;
     }
-  } else {
-    ctx->std_output_handle = NULL;
   }
   if (std_error_handle != NULL && std_error_handle != INVALID_HANDLE_VALUE) {
     if (!DuplicateHandle(
         current_process,
         std_error_handle,
         current_process,
-        &ctx->std_error_handle,
+        ctx->std_error_handle.Receive(),
         0,
         FALSE,
         DUPLICATE_SAME_ACCESS)) {
@@ -220,13 +209,40 @@ void* ProcessProxyManager::PrepareHoaxProxy(
       LOG4CPLUS_INFO(logger_, "DuplicateHandle failed. Error " << error);
       // Some process may pass invalid handles here - we should not fail
       // entire CreateProcess call.
-      ctx->std_error_handle = NULL;
     }
-  } else {
-    ctx->std_error_handle = NULL;
   }
-  ctx->process_handle = process_handle;
-  ctx->thread_handle = thread_handle;
+  // We must use duplicated handles for process and thread. In other case
+  // we risk get weird errors in cases when client closes one of these handles,
+  // then system reuse handle value for other event and we signal wrong event.
+  if (!DuplicateHandle(
+      current_process,
+      process_handle.Get(),
+      current_process,
+      ctx->process_handle.Receive(),
+      0,
+      FALSE,
+      DUPLICATE_SAME_ACCESS)) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_INFO(logger_, "DuplicateHandle failed. Error " << error);
+    return nullptr;
+  }
+  if (!DuplicateHandle(
+      current_process,
+      thread_handle.Get(),
+      current_process,
+      ctx->thread_handle.Receive(),
+      0,
+      FALSE,
+      DUPLICATE_SAME_ACCESS)) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_INFO(logger_, "DuplicateHandle failed. Error " << error);
+    return nullptr;
+  }
+  // Non-duplicated handle to fill process_handle_to_exit_code_ map.
+  ctx->client_process_handle = process_handle.Get();
+  // It is responsibility of the client to close process and thread handles.
+  process_handle.Release();
+  thread_handle.Release();
   return ctx.release();
 }
 
@@ -238,8 +254,8 @@ void ProcessProxyManager::SyncFinishHoaxProxy(
   ctx->result_stderr = cache_hit_info.result_stderr;
   {
     std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
-    process_handle_to_exit_code_[
-        ctx->process_handle] = cache_hit_info.exit_code;
+    process_handle_to_exit_code_[ctx->client_process_handle] =
+        cache_hit_info.exit_code;
   }
   HoaxThreadPoolProc(ctx);
 }
@@ -255,9 +271,9 @@ void ProcessProxyManager::SyncDriveRealProcess(
   DWORD handle_count = 0;
   // Ensure stream handles go first, so in case process termination
   // they will be signales first.
-  if (read_stdout_handle.IsValid() && ctx->std_output_handle != NULL)
+  if (read_stdout_handle.IsValid() && ctx->std_output_handle.IsValid())
     wait_handles[handle_count++] = read_stdout_handle.Get();
-  if (read_stderr_handle.IsValid() && ctx->std_error_handle != NULL)
+  if (read_stderr_handle.IsValid() && ctx->std_error_handle.IsValid())
     wait_handles[handle_count++] = read_stderr_handle.Get();
   wait_handles[handle_count++] = process_handle;
   bool completed = false;
@@ -272,12 +288,16 @@ void ProcessProxyManager::SyncDriveRealProcess(
     }
     DWORD index = wait_result - WAIT_OBJECT_0;
     if (wait_handles[index] == read_stdout_handle.Get()) {
-      if (!TransferBlock(read_stdout_handle.Get(), ctx->std_output_handle))
+      if (!TransferBlock(
+          read_stdout_handle.Get(), ctx->std_output_handle.Get())) {
         return;
+      }
     }
     if (wait_handles[index] == read_stderr_handle.Get()) {
-      if (!TransferBlock(read_stderr_handle.Get(), ctx->std_error_handle))
+      if (!TransferBlock(
+          read_stderr_handle.Get(), ctx->std_error_handle.Get())) {
         return;
+      }
     }
     if (wait_handles[index] == process_handle) {
       DWORD exit_code = 0;
@@ -290,11 +310,11 @@ void ProcessProxyManager::SyncDriveRealProcess(
       LOG4CPLUS_ASSERT(logger_, exit_code != STILL_ACTIVE);
       {
         std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
-        process_handle_to_exit_code_[ctx->process_handle] = exit_code;
+        process_handle_to_exit_code_[ctx->client_process_handle] = exit_code;
       }
       completed = true;
-      SetEvent(ctx->process_handle);
-      SetEvent(ctx->thread_handle);
+      SetEvent(ctx->process_handle.Get());
+      SetEvent(ctx->thread_handle.Get());
     }
   }
 }
@@ -325,8 +345,8 @@ bool ProcessProxyManager::CreateHoaxProxy(
   }
   {
     std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
-    process_handle_to_exit_code_[
-      ctx->process_handle] = cache_hit_info.exit_code;
+    process_handle_to_exit_code_[ctx->client_process_handle] =
+        cache_hit_info.exit_code;
   }
   return true;
 }

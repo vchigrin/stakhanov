@@ -86,7 +86,7 @@ class ProcessProxyManager {
   std::wstring stproxy_path_;
 
   std::mutex process_handle_to_exit_code_lock_;
-  std::unordered_map<HANDLE, DWORD> process_handle_to_exit_code_;
+  std::unordered_map<void*, DWORD> process_handle_to_exit_code_;
 };
 
 #endif  // STHOOK_PROCESS_PROXY_MANAGER_H_
