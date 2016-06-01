@@ -82,6 +82,16 @@ bool ProcessManagementConfig::ShouldIgnoreStdStreamsFromChildren(
       request, ignore_std_streams_from_children_patterns_);
 }
 
+bool ProcessManagementConfig::ShouldBufferStdStreams(
+    const ProcessCreationRequest& request) const {
+  return MatchesAnyPattern(request, buffer_std_streams_patterns_);
+}
+
+bool ProcessManagementConfig::ShouldIgnoreOutputFiles(
+    const ProcessCreationRequest& request) const {
+  return MatchesAnyPattern(request, ignore_output_files_patterns_);
+}
+
 void ProcessManagementConfig::LoadConfig(
     const boost::property_tree::ptree& config) {
   LoadPatternsByPath(
@@ -93,6 +103,12 @@ void ProcessManagementConfig::LoadConfig(
   LoadPatternsByPath(
       config, "process_rules.ignore_std_streams_from_children",
       &ignore_std_streams_from_children_patterns_);
+  LoadPatternsByPath(
+      config, "process_rules.buffer_std_streams",
+      &buffer_std_streams_patterns_);
+  LoadPatternsByPath(
+      config, "process_rules.ignore_output_files",
+      &ignore_output_files_patterns_);
 }
 
 void ProcessManagementConfig::LoadPatternsByPath(

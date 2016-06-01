@@ -40,6 +40,22 @@
       {
         "command_line_patterns": [ "^.*yakuza(\\.exe)?$" ]
       }
+    ],
+    "buffer_std_streams": [
+      {
+        "command_line_patterns": [ "^.*ninja(\\.exe)?$" ]
+      },
+      {
+        "command_line_patterns": [ "^.*yakuza(\\.exe)?$" ]
+      }
+    ],
+    "ignore_output_files": [
+      {
+        "command_line_patterns": [ "^.*ninja(\\.exe)?$" ]
+      },
+      {
+        "command_line_patterns": [ "^.*yakuza(\\.exe)?$" ]
+      }
     ]
   },
   "files_storage": {

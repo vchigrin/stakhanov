@@ -65,8 +65,8 @@ ExecutorImpl::ExecutorImpl(
       executor_factory_(executor_factory),
       files_filter_(files_filter),
       files_infos_filled_(false),
-      is_safe_to_use_hoax_proxy_(false),
       is_helper_executor_(false) {
+  memset(&process_config_info_, 0, sizeof(process_config_info_));
 }
 
 bool ExecutorImpl::HookedCreateFile(
@@ -168,7 +168,9 @@ int32_t ExecutorImpl::InitializeMainExecutor(
          current_pid,
          &command_info_.command_id,
          &command_ids_should_append,
-         &is_safe_to_use_hoax_proxy_);
+         &process_config_info_.should_use_hoax_proxy,
+         &process_config_info_.should_buffer_std_streams,
+         &process_config_info_.should_ignore_output_files);
      executors_should_append_std_streams_ = executor_factory_->GetExecutors(
          command_ids_should_append);
   }
@@ -185,8 +187,8 @@ void ExecutorImpl::InitializeHelperExecutor(
   // and registration used only for this.
 }
 
-bool ExecutorImpl::IsSafeToUseHoaxProxy() {
-  return is_safe_to_use_hoax_proxy_;
+void ExecutorImpl::GetProcessConfig(ProcessConfigInfo& result) {
+  result = process_config_info_;
 }
 
 void ExecutorImpl::OnSuspendedProcessCreated(

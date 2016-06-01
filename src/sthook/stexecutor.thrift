@@ -17,13 +17,19 @@ struct CacheHitInfo {
   5:string result_stderr;
 }
 
+struct ProcessConfigInfo {
+  1:bool should_use_hoax_proxy;
+  2:bool should_buffer_std_streams;
+  3:bool should_ignore_output_files;
+}
+
 service Executor {
   // Returns main executor command id. It can be used to register
   // helper executors.
   i32 InitializeMainExecutor(1:i32 current_pid, 2:bool is_root_process);
   // Helper executor can call only functions related to process creation.
   void InitializeHelperExecutor(1:i32 main_executor_command_id);
-  bool IsSafeToUseHoaxProxy();
+  ProcessConfigInfo GetProcessConfig();
   bool HookedCreateFile(1:string abs_path, 2:bool for_writing);
   void PushStdOutput(1:StdHandles handle, 2:binary data);
   void HookedRenameFile(1:string old_name_str, 2:string new_name_str);

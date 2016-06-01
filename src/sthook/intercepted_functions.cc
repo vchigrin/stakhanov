@@ -40,6 +40,10 @@ const wchar_t kStLaunchExeName[] = L"stlaunch.exe";
 
 std::mutex g_executor_call_mutex;
 int32_t g_main_executor_command_id;
+bool g_should_buffer_std_streams = false;
+bool g_should_ignore_output_files = false;
+std::string g_std_output_buffer;
+std::string g_std_error_buffer;
 
 typedef BOOL (WINAPI *LPCREATE_PROCESS_W)(
     LPCWSTR application_name,
@@ -233,6 +237,9 @@ NTSTATUS NTAPI NewNtCreateFile(
      return result;
   if (create_options & FILE_DELETE_ON_CLOSE)
      return result;  // Do not process temporary files.
+  const bool for_writing = (desired_access & GENERIC_WRITE) != 0;
+  if (for_writing && g_should_ignore_output_files)
+    return result;
   if (object_attributes && object_attributes->ObjectName) {
     ExecutorIf* executor = GetExecutor();
     if (executor) {
@@ -253,7 +260,7 @@ NTSTATUS NTAPI NewNtCreateFile(
           std::lock_guard<std::mutex> lock(g_executor_call_mutex);
           executor->HookedCreateFile(
               abs_path_utf8,
-              (desired_access & GENERIC_WRITE) != 0);
+              for_writing);
         }
       }
     }
@@ -885,7 +892,12 @@ void BeforeWriteFile(
     std::string data(
         static_cast<const char*>(buffer),
         number_of_bytes_to_write);
-    {
+    if (g_should_buffer_std_streams) {
+      if (handle_type == StdHandles::StdOutput)
+        g_std_output_buffer += data;
+      else
+        g_std_error_buffer += data;
+    } else {
       std::lock_guard<std::mutex> lock(g_executor_call_mutex);
       GetExecutor()->PushStdOutput(handle_type, data);
     }
@@ -904,7 +916,12 @@ void BeforeWriteFileEx(
     std::string data(
         static_cast<const char*>(buffer),
         number_of_bytes_to_write);
-    {
+    if (g_should_buffer_std_streams) {
+      if (handle_type == StdHandles::StdOutput)
+        g_std_output_buffer += data;
+      else
+        g_std_error_buffer += data;
+    } else {
       std::lock_guard<std::mutex> lock(g_executor_call_mutex);
       GetExecutor()->PushStdOutput(handle_type, data);
     }
@@ -923,7 +940,12 @@ void BeforeWriteConsoleA(
     std::string data(
         static_cast<const char*>(buffer),
         number_of_chars_to_write * sizeof(CHAR));
-    {
+    if (g_should_buffer_std_streams) {
+      if (handle_type == StdHandles::StdOutput)
+        g_std_output_buffer += data;
+      else
+        g_std_error_buffer += data;
+    } else {
       std::lock_guard<std::mutex> lock(g_executor_call_mutex);
       GetExecutor()->PushStdOutput(handle_type, data);
     }
@@ -948,7 +970,12 @@ void BeforeWriteConsoleW(
     std::string ansi_string = base::ToANSIFromWide(
         wide_buffer,
         code_page);
-    {
+    if (g_should_buffer_std_streams) {
+      if (handle_type == StdHandles::StdOutput)
+        g_std_output_buffer += ansi_string;
+      else
+        g_std_error_buffer += ansi_string;
+    } else {
       std::lock_guard<std::mutex> lock(g_executor_call_mutex);
       GetExecutor()->PushStdOutput(handle_type, ansi_string);
     }
@@ -1015,6 +1042,12 @@ void BeforeExitProcess(UINT exit_code) {
   FlushUCRTIfPossible();
   {
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
+    if (g_should_buffer_std_streams) {
+      GetExecutor()->PushStdOutput(
+          StdHandles::StdOutput, std::move(g_std_output_buffer));
+      GetExecutor()->PushStdOutput(
+          StdHandles::StdError, std::move(g_std_error_buffer));
+    }
     GetExecutor()->OnBeforeExitProcess();
   }
   // Must disable all hooks, since during ExitProcess there may be
@@ -1032,6 +1065,8 @@ void BeforeTerminateProcess(HANDLE process_handle, UINT exit_code) {
 void AfterDeleteFileA(BOOL result, LPCSTR file_path) {
   if (!result)
     return;
+  if (g_should_ignore_output_files)
+    return;
   std::string abs_path_utf8 = base::AbsPathUTF8(
       base::ToLongPathName(std::string(file_path)));
   {
@@ -1042,6 +1077,8 @@ void AfterDeleteFileA(BOOL result, LPCSTR file_path) {
 
 void AfterDeleteFileW(BOOL result, LPCWSTR file_path) {
   if (!result)
+    return;
+  if (g_should_ignore_output_files)
     return;
   std::string abs_path_utf8 = base::AbsPathUTF8(
       base::ToLongPathName(std::wstring(file_path)));
@@ -1128,12 +1165,17 @@ void Initialize(HMODULE current_module) {
   if (!InstallHooks(current_module)) {
     LOG4CPLUS_ERROR(logger_, "Hook installation failed");
   }
-  bool is_safe_to_use_hoax_proxy = GetExecutor()->IsSafeToUseHoaxProxy();
+  ProcessConfigInfo process_config;
+  GetExecutor()->GetProcessConfig(process_config);
   LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   ProcessProxyManager::Initialize(
       current_module,
-      is_safe_to_use_hoax_proxy,
+      process_config.should_use_hoax_proxy,
       g_original_CreateProcessW);
+  g_should_buffer_std_streams =
+      process_config.should_buffer_std_streams;
+  g_should_ignore_output_files =
+      process_config.should_ignore_output_files;
   StdHandlesHolder::Initialize();
 }
 

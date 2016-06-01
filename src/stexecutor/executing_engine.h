@@ -59,7 +59,9 @@ class ExecutingEngine {
       int32_t pid,
       int* command_id,
       std::vector<int>* command_ids_should_append_std_streams,
-      bool* is_safe_to_use_hoax_proxy);
+      bool* is_safe_to_use_hoax_proxy,
+      bool* should_buffer_std_streams,
+      bool* should_ignore_output_files);
 
   FilesStorage* files_storage() const {
     return files_storage_.get();

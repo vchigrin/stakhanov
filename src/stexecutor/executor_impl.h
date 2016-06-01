@@ -32,7 +32,7 @@ class ExecutorImpl : public ExecutorIf {
       const int32_t current_pid, const bool is_root_process) override;
   void InitializeHelperExecutor(
       const int32_t main_executor_command_id) override;
-  bool IsSafeToUseHoaxProxy() override;
+  void GetProcessConfig(ProcessConfigInfo& result) override;
   bool HookedCreateFile(
       const std::string& abs_path, const bool for_writing) override;
   void HookedRenameFile(
@@ -94,7 +94,7 @@ class ExecutorImpl : public ExecutorIf {
   std::mutex std_handles_lock_;
   boost::filesystem::path dump_env_dir_;
   bool files_infos_filled_;
-  bool is_safe_to_use_hoax_proxy_;
+  ProcessConfigInfo process_config_info_;
   bool is_helper_executor_;
 };
 
