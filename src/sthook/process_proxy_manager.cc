@@ -191,9 +191,7 @@ void* ProcessProxyManager::PrepareHoaxProxy(
         FALSE,
         DUPLICATE_SAME_ACCESS)) {
       DWORD error = GetLastError();
-      LOG4CPLUS_INFO(logger_, "DuplicateHandle failed. Error " << error);
-      // Some process may pass invalid handles here - we should not fail
-      // entire CreateProcess call.
+      LOG4CPLUS_ERROR(logger_, "DuplicateHandle failed. Error " << error);
     }
   }
   if (std_error_handle != NULL && std_error_handle != INVALID_HANDLE_VALUE) {
@@ -206,9 +204,7 @@ void* ProcessProxyManager::PrepareHoaxProxy(
         FALSE,
         DUPLICATE_SAME_ACCESS)) {
       DWORD error = GetLastError();
-      LOG4CPLUS_INFO(logger_, "DuplicateHandle failed. Error " << error);
-      // Some process may pass invalid handles here - we should not fail
-      // entire CreateProcess call.
+      LOG4CPLUS_ERROR(logger_, "DuplicateHandle failed. Error " << error);
     }
   }
   // We must use duplicated handles for process and thread. In other case
