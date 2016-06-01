@@ -83,8 +83,15 @@ bool MoveTempFile(
   boost::system::error_code error;
   boost::filesystem::rename(temp_path, dest_path, error);
   if (error) {
-    LOG4CPLUS_ERROR(logger_, "Rename failed, error " << error);
     boost::filesystem::remove(temp_path, error);
+    if (boost::filesystem::exists(dest_path)) {
+      // May be other thread renamed to the same file.
+      // since destination path depends on the file content, the file must be
+      // identical to the one we're renaming, and we should not consider this
+      // as error.
+      return true;
+    }
+    LOG4CPLUS_ERROR(logger_, "Rename failed, error " << error);
     return false;
   }
   return true;
