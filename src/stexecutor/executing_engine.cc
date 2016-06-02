@@ -57,36 +57,19 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
             process_creation_request);
   }
 
+  CumulativeExecutionResponseBuilder* parent_builder = nullptr;
   {
     std::lock_guard<std::mutex> instance_lock(instance_lock_);
     command_id = next_command_id_++;
-    CumulativeExecutionResponseBuilder* parent_builder = GetResponseBuilder(
-        parent_command_id);
+    parent_builder = GetResponseBuilder(parent_command_id);
     LOG4CPLUS_ASSERT(
         logger_, parent_builder || parent_command_id == kRootCommandId);
     if (!execution_response) {
-      LOG4CPLUS_INFO(logger_,
-           "No cached response for " << process_creation_request <<
-           " Assigned id " << command_id);
-
-      std::unique_ptr<CumulativeExecutionResponseBuilder> result_builder(
-          new CumulativeExecutionResponseBuilder(
-              command_id,
-              process_creation_request,
-              new_request_ignores_std_streams_from_children,
-              parent_builder));
-
-      // Emulate "child-parent" relations between all processes in tree,
-      // So top-level process will grab all input-output files.
-      if (parent_builder) {
-        // We add association only to direct ancestor.
-        // Since parent can not complete until all it children complete, that
-        // seems safe.
-        parent_builder->ChildProcessCreated(command_id);
-      }
-      active_commands_.insert(
-          std::make_pair(command_id, std::move(result_builder)));
-      return ProcessCreationResponse::BuildCacheMissResponse(command_id);
+      return HandleCacheMissUnderInstanceLock(
+          parent_builder,
+          command_id,
+          new_request_ignores_std_streams_from_children,
+          process_creation_request);
     }
     LOG4CPLUS_INFO(logger_,
          "Using cached response for " << process_creation_request <<
@@ -96,29 +79,52 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
     if (parent_builder) {
       parent_ignores_std_streams_from_children =
           parent_builder->should_ignore_std_streams_from_children();
-      parent_builder->AddChildResponse(
-          kCacheHitCommandId,
-          input_files, *execution_response);
     }
   }
+  bool success = true;
+  // TODO(vchigrin): Handle errors, if we'll fail to take any file from
+  // storage we should fall-back to CacheMiss.
   for (const rules_mappers::FileInfo& file_info :
       execution_response->output_files) {
-    build_dir_state_->TakeFileFromStorage(
+    success &= build_dir_state_->TakeFileFromStorage(
         files_storage_.get(),
         file_info.storage_content_id,
         file_info.rel_file_path);
   }
   for (const boost::filesystem::path& removed_path :
        execution_response->removed_rel_paths) {
-    build_dir_state_->RemoveFile(removed_path);
+    success &= build_dir_state_->RemoveFile(removed_path);
   }
   std::string stdout_content, stderr_content;
 
   if (!parent_ignores_std_streams_from_children) {
-      stdout_content = files_storage_->RetrieveContent(
-          execution_response->stdout_content_id);
-      stderr_content = files_storage_->RetrieveContent(
-          execution_response->stderr_content_id);
+    success &= files_storage_->RetrieveContent(
+        execution_response->stdout_content_id,
+        &stdout_content);
+    success &= files_storage_->RetrieveContent(
+        execution_response->stderr_content_id,
+        &stderr_content);
+  }
+
+  {
+    std::lock_guard<std::mutex> instance_lock(instance_lock_);
+    if (success) {
+      if (parent_builder) {
+        parent_builder->AddChildResponse(
+            kCacheHitCommandId,
+            input_files, *execution_response);
+      }
+    } else {
+      LOG4CPLUS_INFO(
+          logger_,
+          "Failed handle cached response for " << process_creation_request <<
+          " fall back to real execution");
+      return HandleCacheMissUnderInstanceLock(
+          parent_builder,
+          command_id,
+          new_request_ignores_std_streams_from_children,
+          process_creation_request);
+    }
   }
   return ProcessCreationResponse::BuildCacheHitResponse(
       command_id,
@@ -292,4 +298,33 @@ void ExecutingEngine::RegisterByPID(
         parent->command_id());
     cur_builder = parent;
   }
+}
+
+ProcessCreationResponse ExecutingEngine::HandleCacheMissUnderInstanceLock(
+    CumulativeExecutionResponseBuilder* parent_builder,
+    int command_id,
+    bool new_request_ignores_std_streams_from_children,
+    const ProcessCreationRequest& process_creation_request) {
+  LOG4CPLUS_INFO(logger_,
+       "No cached response for " << process_creation_request <<
+       " Assigned id " << command_id);
+
+  std::unique_ptr<CumulativeExecutionResponseBuilder> result_builder(
+      new CumulativeExecutionResponseBuilder(
+          command_id,
+          process_creation_request,
+          new_request_ignores_std_streams_from_children,
+          parent_builder));
+
+  // Emulate "child-parent" relations between all processes in tree,
+  // So top-level process will grab all input-output files.
+  if (parent_builder) {
+    // We add association only to direct ancestor.
+    // Since parent can not complete until all it children complete, that
+    // seems safe.
+    parent_builder->ChildProcessCreated(command_id);
+  }
+  active_commands_.insert(
+      std::make_pair(command_id, std::move(result_builder)));
+  return ProcessCreationResponse::BuildCacheMissResponse(command_id);
 }

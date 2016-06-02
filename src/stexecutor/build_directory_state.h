@@ -24,7 +24,7 @@ class BuildDirectoryState {
       const boost::filesystem::path& rel_path);
   boost::filesystem::path MakeRelativePath(
       const boost::filesystem::path& abs_path) const;
-  void RemoveFile(const boost::filesystem::path& rel_path);
+  bool RemoveFile(const boost::filesystem::path& rel_path);
   void NotifyFileChanged(const boost::filesystem::path& rel_path);
 
  private:

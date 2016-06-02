@@ -22,7 +22,8 @@ class FilesystemFilesStorage : public FilesStorage {
       const std::string& storage_id,
       const boost::filesystem::path& dest_path) override;
   std::string StoreContent(const std::string& data) override;
-  std::string RetrieveContent(const std::string& storage_id) override;
+  bool RetrieveContent(
+      const std::string& storage_id, std::string* result) override;
 
  protected:
   virtual void OnStorageIdFilled(const std::string& storage_id);

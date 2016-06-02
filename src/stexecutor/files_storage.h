@@ -20,7 +20,8 @@ class FilesStorage {
       const std::string& storage_id,
       const boost::filesystem::path& dest_path) = 0;
   virtual std::string StoreContent(const std::string& data) = 0;
-  virtual std::string RetrieveContent(const std::string& storage_id) = 0;
+  virtual bool RetrieveContent(
+      const std::string& storage_id, std::string* result) = 0;
 };
 
 #endif  // STEXECUTOR_FILES_STORAGE_H_

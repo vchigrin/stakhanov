@@ -75,6 +75,11 @@ class ExecutingEngine {
   std::mutex instance_lock_;
 
   void CompleteCumulativeResponse(CumulativeExecutionResponseBuilder* builder);
+  ProcessCreationResponse HandleCacheMissUnderInstanceLock(
+      CumulativeExecutionResponseBuilder* parent_builder,
+      int command_id,
+      bool new_request_ignores_std_streams_from_children,
+      const ProcessCreationRequest& process_creation_request);
 
   CumulativeExecutionResponseBuilder* GetResponseBuilder(int command_id) {
     auto it = active_commands_.find(command_id);

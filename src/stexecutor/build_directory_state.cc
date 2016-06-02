@@ -112,7 +112,7 @@ bool BuildDirectoryState::TakeFileFromStorage(
   return true;
 }
 
-void BuildDirectoryState::RemoveFile(const boost::filesystem::path& rel_path) {
+bool BuildDirectoryState::RemoveFile(const boost::filesystem::path& rel_path) {
   {
     std::lock_guard<std::mutex> lock(instance_lock_);
     content_id_cache_.erase(rel_path);
@@ -121,6 +121,17 @@ void BuildDirectoryState::RemoveFile(const boost::filesystem::path& rel_path) {
   boost::system::error_code remove_error;
   // Delete old file, if any.
   boost::filesystem::remove(abs_path, remove_error);
+  if (!remove_error)
+    return true;
+  if (boost::filesystem::exists(abs_path)) {
+    LOG4CPLUS_ERROR(
+        logger_,
+        "Failed remove file " << rel_path.string().c_str() <<
+        " Error " << remove_error);
+    return false;
+  }
+  // Seems, file does not exist, so nothing to remove.
+  return true;
 }
 
 void BuildDirectoryState::NotifyFileChanged(

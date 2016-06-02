@@ -185,15 +185,18 @@ std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
   return storage_id;
 }
 
-std::string FilesystemFilesStorage::RetrieveContent(
-    const std::string& storage_id) {
-  if (storage_id == empty_content_id_)
-    return std::string();
+bool FilesystemFilesStorage::RetrieveContent(
+    const std::string& storage_id,
+    std::string* result) {
+  if (storage_id == empty_content_id_) {
+    *result = std::string();
+    return true;
+  }
   boost::filesystem::path file_path = FilePathFromId(storage_id);
   if (!boost::filesystem::exists(file_path)) {
     if (!OnRequestedMissedStorageId(storage_id)) {
       LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << file_path.c_str());
-      return std::string();
+      return false;
     }
   }
   base::ScopedHandle input_file(
@@ -216,10 +219,10 @@ std::string FilesystemFilesStorage::RetrieveContent(
   if (file_size == INVALID_FILE_SIZE) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "Failed get file size, error " << error);
-    return std::string();
+    return false;
   }
   if (file_size == 0)
-    return std::string();
+    return false;
   std::vector<char> data(file_size);
   DWORD bytes_read = 0;
   BOOL ok = ReadFile(
@@ -231,9 +234,10 @@ std::string FilesystemFilesStorage::RetrieveContent(
   if (!ok) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "ReadFile failed Error " << error);
-    return std::string();
+    return false;
   }
-  return std::string(&data[0], file_size);
+  *result = std::string(&data[0], file_size);
+  return true;
 }
 
 void FilesystemFilesStorage::OnStorageIdFilled(
