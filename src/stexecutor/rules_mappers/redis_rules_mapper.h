@@ -18,8 +18,8 @@ namespace rules_mappers {
 
 class RedisRulesMapper : public RulesMapperBase {
  public:
-  RedisRulesMapper(
-      std::unique_ptr<RedisClientPool> redis_client_pool);
+  explicit RedisRulesMapper(
+      const std::shared_ptr<RedisClientPool> redis_client_pool);
   ~RedisRulesMapper();
 
   std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
@@ -32,7 +32,7 @@ class RedisRulesMapper : public RulesMapperBase {
       std::unique_ptr<CachedExecutionResponse> response) override;
 
  private:
-  std::unique_ptr<RedisClientPool> redis_client_pool_;
+  std::shared_ptr<RedisClientPool> redis_client_pool_;
 };
 
 }  // namespace rules_mappers

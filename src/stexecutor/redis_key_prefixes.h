@@ -9,6 +9,7 @@ namespace redis_key_prefixes {
 extern const char kRules[];
 extern const char kFileSets[];
 extern const char kResponse[];
+extern const char kStoredFileHosts[];
 }
 
 #endif  // STEXECUTOR_REDIS_KEY_PREFIXES_H_

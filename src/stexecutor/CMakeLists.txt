@@ -7,6 +7,8 @@ add_executable(stexecutor
   build_directory_state.h
   cumulative_execution_response_builder.cc
   cumulative_execution_response_builder.h
+  distributed_files_storage.cc
+  distributed_files_storage.h
   dll_injector.cc
   dll_injector.h
   executed_command_info.h

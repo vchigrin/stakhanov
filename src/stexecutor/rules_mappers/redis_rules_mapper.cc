@@ -22,8 +22,8 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
 namespace rules_mappers {
 
 RedisRulesMapper::RedisRulesMapper(
-    std::unique_ptr<RedisClientPool> redis_client_pool)
-    : redis_client_pool_(std::move(redis_client_pool)) { }
+    const std::shared_ptr<RedisClientPool> redis_client_pool)
+    : redis_client_pool_(redis_client_pool) { }
 
 RedisRulesMapper::~RedisRulesMapper() { }
 

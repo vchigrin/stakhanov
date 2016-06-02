@@ -24,13 +24,24 @@ class FilesystemFilesStorage : public FilesStorage {
   std::string StoreContent(const std::string& data) override;
   std::string RetrieveContent(const std::string& storage_id) override;
 
+ protected:
+  virtual void OnStorageIdFilled(const std::string& storage_id);
+  // Subclasses can override this to provide storage items on-demand.
+  // If returns true that means that request successfully fulfiled.
+  virtual bool OnRequestedMissedStorageId(
+      const std::string& storage_id);
+  boost::filesystem::path PrepareTempPath() const;
+  static bool MoveTempFile(
+      const boost::filesystem::path& temp_path,
+      const boost::filesystem::path& dest_path);
+  static std::string GetFileHash(const boost::filesystem::path& file_path);
+  static std::string RelFilePathFromId(const std::string& storage_id);
+  boost::filesystem::path PreparePlace(const std::string& storage_id);
+
  private:
   void LoadConfig(const boost::property_tree::ptree& config);
-  std::string GetFileHash(const boost::filesystem::path& file_path);
-  boost::filesystem::path PreparePlace(const std::string& storage_id);
   boost::filesystem::path FilePathFromId(const std::string& storage_id);
   bool IsSafeToLink(const boost::filesystem::path& file_path);
-  boost::filesystem::path PrepareTempPath() const;
 
   boost::filesystem::path storage_dir_;
   // Zero means no limit.

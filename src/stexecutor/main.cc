@@ -18,13 +18,12 @@
 #include "boost/smart_ptr/make_shared.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
-#include "log4cplus/win32debugappender.h"
 #include "stexecutor/build_directory_state.h"
 #include "stexecutor/dll_injector.h"
 #include "stexecutor/executed_command_info.h"
 #include "stexecutor/executing_engine.h"
 #include "stexecutor/executor_factory.h"
-#include "stexecutor/filesystem_files_storage.h"
+#include "stexecutor/distributed_files_storage.h"
 #include "stexecutor/files_filter.h"
 #include "stexecutor/process_management_config.h"
 #include "stexecutor/redis_client_pool.h"
@@ -124,7 +123,8 @@ std::istream& operator >> (
 }
 
 std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
-    const boost::program_options::variables_map& option_variables) {
+    const boost::program_options::variables_map& option_variables,
+    const std::shared_ptr<RedisClientPool>& redis_client_pool) {
   RulesMapperType rules_mapper_type =
       option_variables["rules_mapper_type"].as<RulesMapperType>();
   if (rules_mapper_type == RulesMapperType::InMemory) {
@@ -137,14 +137,8 @@ std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
     }
     return rules_mapper;
   } else if (rules_mapper_type == RulesMapperType::Redis) {
-    std::string redis_ip = option_variables["redis_ip"].as<std::string>();
-    int redis_port = option_variables["redis_port"].as<int>();
-
-    std::unique_ptr<RedisClientPool> client_pool =
-        std::make_unique<RedisClientPool>(redis_ip, redis_port);
-
     std::unique_ptr<rules_mappers::RedisRulesMapper> rules_mapper(
-        new rules_mappers::RedisRulesMapper(std::move(client_pool)));
+        new rules_mappers::RedisRulesMapper(redis_client_pool));
     return rules_mapper;
   } else {
     LOG4CPLUS_ASSERT(logger_, false);
@@ -277,10 +271,16 @@ int main(int argc, char* argv[]) {
 
   boost::property_tree::ptree config = LoadConfig(variables);
 
+  std::string redis_ip = variables["redis_ip"].as<std::string>();
+  int redis_port = variables["redis_port"].as<int>();
+
+  std::shared_ptr<RedisClientPool> redis_client_pool =
+      std::make_shared<RedisClientPool>(redis_ip, redis_port);
+
   std::unique_ptr<FilesStorage> file_storage(
-      new FilesystemFilesStorage(config));
+      new DistributedFilesStorage(config, redis_client_pool));
   std::unique_ptr<rules_mappers::RulesMapper> rules_mapper =
-      CreateRulesMapper(variables);
+      CreateRulesMapper(variables, redis_client_pool);
   if (!rules_mapper) {
     LOG4CPLUS_FATAL(logger_, "Failed create rules mapper");
     return 1;

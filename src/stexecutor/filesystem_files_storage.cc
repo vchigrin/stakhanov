@@ -75,28 +75,6 @@ bool LinkOrCopyFile(
   return true;
 }
 
-bool MoveTempFile(
-    const boost::filesystem::path& temp_path,
-    const boost::filesystem::path& dest_path) {
-  // Hope rename operation is atomic, so other thread will not see
-  // half-written file.
-  boost::system::error_code error;
-  boost::filesystem::rename(temp_path, dest_path, error);
-  if (error) {
-    boost::filesystem::remove(temp_path, error);
-    if (boost::filesystem::exists(dest_path)) {
-      // May be other thread renamed to the same file.
-      // since destination path depends on the file content, the file must be
-      // identical to the one we're renaming, and we should not consider this
-      // as error.
-      return true;
-    }
-    LOG4CPLUS_ERROR(logger_, "Rename failed, error " << error);
-    return false;
-  }
-  return true;
-}
-
 }  // namespace
 
 FilesystemFilesStorage::FilesystemFilesStorage(
@@ -154,6 +132,7 @@ std::string FilesystemFilesStorage::StoreFile(
     return std::string();
   if (!MoveTempFile(temp_path, dest_path))
     return std::string();
+  OnStorageIdFilled(file_id);
   return file_id;
 }
 
@@ -162,8 +141,10 @@ bool FilesystemFilesStorage::GetFileFromStorage(
     const boost::filesystem::path& dest_path) {
   boost::filesystem::path src_path = FilePathFromId(storage_id);
   if (!boost::filesystem::exists(src_path)) {
-    LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << src_path.c_str());
-    return false;
+    if (!OnRequestedMissedStorageId(storage_id)) {
+      LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << src_path.c_str());
+      return false;
+    }
   }
   boost::filesystem::create_directories(dest_path.parent_path());
   return LinkOrCopyFile(src_path, dest_path, IsSafeToLink(dest_path));
@@ -200,6 +181,7 @@ std::string FilesystemFilesStorage::StoreContent(const std::string& data) {
   }
   if (!MoveTempFile(temp_path, dest_path))
     return std::string();
+  OnStorageIdFilled(storage_id);
   return storage_id;
 }
 
@@ -209,8 +191,10 @@ std::string FilesystemFilesStorage::RetrieveContent(
     return std::string();
   boost::filesystem::path file_path = FilePathFromId(storage_id);
   if (!boost::filesystem::exists(file_path)) {
-    LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << file_path.c_str());
-    return std::string();
+    if (!OnRequestedMissedStorageId(storage_id)) {
+      LOG4CPLUS_ERROR(logger_, "Object doesn't exist " << file_path.c_str());
+      return std::string();
+    }
   }
   base::ScopedHandle input_file(
       CreateFileW(
@@ -252,6 +236,16 @@ std::string FilesystemFilesStorage::RetrieveContent(
   return std::string(&data[0], file_size);
 }
 
+void FilesystemFilesStorage::OnStorageIdFilled(
+    const std::string& storage_id) {
+}
+
+bool FilesystemFilesStorage::OnRequestedMissedStorageId(
+    const std::string& storage_id) {
+  return false;
+}
+
+// static
 std::string FilesystemFilesStorage::GetFileHash(
     const boost::filesystem::path& file_path) {
   CryptoPP::Weak::MD5 hasher;
@@ -281,13 +275,22 @@ boost::filesystem::path FilesystemFilesStorage::PreparePlace(
 
 boost::filesystem::path FilesystemFilesStorage::FilePathFromId(
     const std::string& storage_id) {
+  std::string rel_path = RelFilePathFromId(storage_id);
+  if (rel_path.empty())
+    return boost::filesystem::path();
+  return storage_dir_ / rel_path;
+}
+
+// static
+std::string FilesystemFilesStorage::RelFilePathFromId(
+    const std::string& storage_id) {
   if (storage_id.length() <= kTopDirCharacters) {
     LOG4CPLUS_ERROR(logger_, "Invalid storage id " << storage_id.c_str());
-    return boost::filesystem::path();
+    return std::string();
   }
   std::string top_dir_name = storage_id.substr(0, kTopDirCharacters);
   std::string object_name = storage_id.substr(kTopDirCharacters);
-  return storage_dir_ / top_dir_name / object_name;
+  return top_dir_name + "/" + object_name;
 }
 
 bool FilesystemFilesStorage::IsSafeToLink(
@@ -303,4 +306,27 @@ boost::filesystem::path FilesystemFilesStorage::PrepareTempPath() const {
   // all storage, to ensure rename operation will be atomic.
   boost::filesystem::path temp_name = boost::filesystem::unique_path();
   return storage_dir_ / temp_name;
+}
+
+// static
+bool FilesystemFilesStorage::MoveTempFile(
+    const boost::filesystem::path& temp_path,
+    const boost::filesystem::path& dest_path) {
+  // Hope rename operation is atomic, so other thread will not see
+  // half-written file.
+  boost::system::error_code error;
+  boost::filesystem::rename(temp_path, dest_path, error);
+  if (error) {
+    boost::filesystem::remove(temp_path, error);
+    if (boost::filesystem::exists(dest_path)) {
+      // May be other thread renamed to the same file.
+      // since destination path depends on the file content, the file must be
+      // identical to the one we're renaming, and we should not consider this
+      // as error.
+      return true;
+    }
+    LOG4CPLUS_ERROR(logger_, "Rename failed, error " << error);
+    return false;
+  }
+  return true;
 }
