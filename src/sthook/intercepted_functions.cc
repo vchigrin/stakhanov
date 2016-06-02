@@ -471,16 +471,21 @@ class CreateProcessInvoker {
       PROCESS_INFORMATION* process_information) = 0;
   virtual const std::string& environment_hash() const = 0;
   virtual bool IsStdStreamsUsed() const = 0;
-  virtual void ReplaceStdStreamHandles(
+  virtual bool PrepareForDeferredExecution(
       HANDLE stdinput_handle,
       HANDLE stdout_handle, HANDLE stderr_handle) = 0;
-  virtual void DisableHandleInheritance() = 0;
+  virtual bool CanBeDeferred() const = 0;
   virtual ~CreateProcessInvoker() {}
 };
 
 template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
 class CreateProcessInvokerImpl : public CreateProcessInvoker {
  public:
+  struct STARTUPINFOEX_TYPE {
+    STARTUPINFO_TYPE StartupInfo;
+    PPROC_THREAD_ATTRIBUTE_LIST lpAttributeList;
+  };
+
   CreateProcessInvokerImpl(
     FUNCTION actual_function,
     const CHAR_TYPE* application_name,
@@ -521,9 +526,17 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     memcpy(startup_info_buffer_.get(), startup_info, startup_info->cb);
   }
 
+  ~CreateProcessInvokerImpl() override {
+    if (attr_list_buffer_) {
+      DeleteProcThreadAttributeList(
+          reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(
+              attr_list_buffer_.get()));
+    }
+  }
+
   BOOL InvokeActualFunction(
       PROCESS_INFORMATION* process_information) override {
-    return actual_function_(
+    BOOL result = actual_function_(
         application_name_.get(),
         command_line_.get(),
         process_attributes_.get(),
@@ -534,6 +547,11 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
         current_directory_.get(),
         startup_info(),
         process_information);
+    if (!result) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(logger_, "CreateProcess failed error " << error);
+    }
+    return result;
   }
 
   const std::string& environment_hash() const override {
@@ -544,19 +562,76 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     return startup_info()->dwFlags & STARTF_USESTDHANDLES;
   }
 
-  void ReplaceStdStreamHandles(
+  bool CanBeDeferred() const override {
+    // We can not defer execution calls that use STARTUPINFOEX, since
+    // WinAPI does not provode wayt to quesy ProcThreadAttributeList structure,
+    // but we need this to update inheritable handle list.
+    // Moreover, we will encounter lifetime issues since
+    // ProcThreadAttributeList contain pointers to memory that is managed by
+    // client process.
+    return startup_info()->cb == sizeof(STARTUPINFO_TYPE);
+  }
+
+  bool PrepareForDeferredExecution(
       HANDLE stdinput_handle,
       HANDLE stdout_handle, HANDLE stderr_handle) {
+    // We must disable handle inheritance to avoid accidental catching
+    // handles to files, created by other threads (thus preventing
+    // deletion of these files). But we do need inherit handles for
+    // stdout, stderr, etc. So use new feature of selectable handles
+    // inheritance.
+    std::unique_ptr<uint8_t[]> new_startup_info_buffer(
+        new uint8_t[sizeof(STARTUPINFOEX_TYPE)]);
+    memcpy(new_startup_info_buffer.get(),
+           startup_info_buffer_.get(),
+           startup_info()->cb);
+    STARTUPINFOEX_TYPE* new_startupinfo =
+        reinterpret_cast<STARTUPINFOEX_TYPE*>(new_startup_info_buffer.get());
+    new_startupinfo->StartupInfo.cb = sizeof(STARTUPINFOEX_TYPE);
+    SIZE_T attr_list_size = 0;
+    InitializeProcThreadAttributeList(NULL, 1, 0, &attr_list_size);
+    if (!attr_list_size) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(
+          logger_,
+          "InitializeProcThreadAttributeList 1 failed error " << error);
+      return false;
+    }
+    attr_list_buffer_.reset(new uint8_t[attr_list_size]);
+    new_startupinfo->lpAttributeList =
+        reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(attr_list_buffer_.get());
+    if (!InitializeProcThreadAttributeList(
+        new_startupinfo->lpAttributeList, 1, 0, &attr_list_size)) {
+      DWORD error = GetLastError();
+      LOG4CPLUS_ERROR(
+          logger_,
+          "InitializeProcThreadAttributeList 2 failed error " << error);
+      return false;
+    }
+    inherited_handles_.clear();
+    if (stdinput_handle)
+      inherited_handles_.push_back(stdinput_handle);
+    if (stdout_handle)
+      inherited_handles_.push_back(stdout_handle);
+    if (stderr_handle)
+      inherited_handles_.push_back(stderr_handle);
+    if (!UpdateProcThreadAttribute(
+        new_startupinfo->lpAttributeList,
+        0,
+        PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+        inherited_handles_.data(),
+        inherited_handles_.size() * sizeof(HANDLE),
+        NULL,
+        NULL)) {
+      LOG4CPLUS_ERROR(logger_, "UpdateProcThreadAttribute failed");
+      return false;
+    }
+    startup_info_buffer_ = std::move(new_startup_info_buffer);
+    creation_flags_ |= EXTENDED_STARTUPINFO_PRESENT;
     startup_info()->hStdInput = stdinput_handle;
     startup_info()->hStdOutput = stdout_handle;
     startup_info()->hStdError = stderr_handle;
-  }
-
-  void DisableHandleInheritance() override {
-    // TODO(vchigrin): We must allow inherit hStdOutput/hStdError handles.
-    // Need to use STARTUPINFOEX. For now just allow inheritance all handles -
-    // this is not critical problem.
-    // inherit_handles_ = FALSE;
+    return true;
   }
 
  private:
@@ -598,7 +673,9 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
   std::unique_ptr<uint8_t[]> environment_;
   std::string environment_hash_;
   std::unique_ptr<CHAR_TYPE[]> current_directory_;
-  std::unique_ptr<uint8_t> startup_info_buffer_;
+  std::unique_ptr<uint8_t[]> startup_info_buffer_;
+  std::unique_ptr<uint8_t[]> attr_list_buffer_;
+  std::vector<HANDLE> inherited_handles_;
 };
 
 struct CreateProcessThreadPoolProcCtx {
@@ -658,17 +735,11 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
       LOG4CPLUS_FATAL(logger_, "CreatePipe fails, error " << error);
       return 0;
     }
-    ctx->invoker->ReplaceStdStreamHandles(
+    ctx->invoker->PrepareForDeferredExecution(
         NULL,
         write_stdout_pipe.Get(),
         write_stderr_pipe.Get());
   }
-  // Avoid child proces accidentally catch inheritable handles to files
-  // created by another threads. This will result in unexpected errors
-  // during file deletion.
-  // This actually changes program logic, so it is very specific to
-  // "safe to hoax" processes.
-  ctx->invoker->DisableHandleInheritance();
   if (!ctx->invoker->InvokeActualFunction(&process_information))
     return 0;
   executor->OnSuspendedProcessCreated(
@@ -684,8 +755,14 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
       process_information.hProcess,
       read_stdout_pipe,
       read_stderr_pipe);
-  CloseHandle(process_information.hThread);
-  CloseHandle(process_information.hProcess);
+  if (!CloseHandle(process_information.hThread)) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "Failed close thread handle error " << error);
+  }
+  if (!CloseHandle(process_information.hProcess)) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "Failed close process handle error " << error);
+  }
   return 0;
 }
 
@@ -743,7 +820,8 @@ BOOL CreateProcessImpl(
 
   ProcessProxyManager* proxy_manager = ProcessProxyManager::GetInstance();
   const bool request_suspended = (creation_flags & CREATE_SUSPENDED) != 0;
-  if (proxy_manager->is_safe_to_use_hoax_proxy()) {
+  if (proxy_manager->is_safe_to_use_hoax_proxy() &&
+      actual_function_invoker->CanBeDeferred()) {
     void* hoax_proxy_id = proxy_manager->PrepareHoaxProxy(
         startup_info->hStdOutput,
         startup_info->hStdError,

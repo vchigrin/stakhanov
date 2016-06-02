@@ -35,11 +35,13 @@ bool PutString(HANDLE file, const std::string& data_to_put) {
   return true;
 }
 
-bool TransferBlock(HANDLE read_handle, HANDLE write_handle) {
+bool TransferBlock(
+    const base::ScopedHandle& read_handle,
+    const base::ScopedHandle& write_handle) {
   uint8_t buffer[1024];
   DWORD bytes_read = 0;
   if (!ReadFile(
-      read_handle,
+      read_handle.Get(),
       buffer,
       sizeof(buffer),
       &bytes_read,
@@ -53,7 +55,7 @@ bool TransferBlock(HANDLE read_handle, HANDLE write_handle) {
   }
   DWORD bytes_written = 0;
   BOOL success = WriteFile(
-      write_handle,
+      write_handle.Get(),
       buffer,
       bytes_read,
       &bytes_written,
@@ -279,21 +281,21 @@ void ProcessProxyManager::SyncDriveRealProcess(
     if (wait_result == WAIT_FAILED) {
       DWORD error = GetLastError();
       LOG4CPLUS_ERROR(
-        logger_, "WaitForMultipleObjects failed. Error " << error);
+          logger_, "WaitForMultipleObjects failed. Error " << error);
       return;
     }
     DWORD index = wait_result - WAIT_OBJECT_0;
     if (wait_handles[index] == read_stdout_handle.Get()) {
-      if (!TransferBlock(
-          read_stdout_handle.Get(), ctx->std_output_handle.Get())) {
+      if (!TransferBlock(read_stdout_handle, ctx->std_output_handle)) {
         return;
       }
+      continue;
     }
     if (wait_handles[index] == read_stderr_handle.Get()) {
-      if (!TransferBlock(
-          read_stderr_handle.Get(), ctx->std_error_handle.Get())) {
+      if (!TransferBlock(read_stderr_handle, ctx->std_error_handle)) {
         return;
       }
+      continue;
     }
     if (wait_handles[index] == process_handle) {
       DWORD exit_code = 0;
@@ -309,8 +311,14 @@ void ProcessProxyManager::SyncDriveRealProcess(
         process_handle_to_exit_code_[ctx->client_process_handle] = exit_code;
       }
       completed = true;
-      SetEvent(ctx->process_handle.Get());
-      SetEvent(ctx->thread_handle.Get());
+      if (!SetEvent(ctx->process_handle.Get())) {
+        DWORD error = GetLastError();
+        LOG4CPLUS_ERROR(logger_, "Failed set process event, error " << error);
+      }
+      if (!SetEvent(ctx->thread_handle.Get())) {
+        DWORD error = GetLastError();
+        LOG4CPLUS_ERROR(logger_, "Failed set process event, error " << error);
+      }
     }
   }
 }
