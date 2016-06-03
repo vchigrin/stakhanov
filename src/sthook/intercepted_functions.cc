@@ -14,6 +14,7 @@
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/timed_block.h"
 #include "base/filesystem_utils.h"
@@ -330,7 +331,7 @@ NTSTATUS NTAPI NewLdrLoadDll(
   return result;
 }
 
-std::vector<std::wstring> SplitCommandLineWide(const wchar_t* command_line) {
+std::vector<std::wstring> SplitCommandLine(const wchar_t* command_line) {
   // TODO(vchigrin): May be it worth to use some undocumented
   // functions from Visual C++ CRT to avoid dependency from shell32.dll
   int argc = 0;
@@ -347,21 +348,6 @@ std::vector<std::wstring> SplitCommandLineWide(const wchar_t* command_line) {
   }
   LocalFree(argv);
   return result;
-}
-
-template<typename CHAR_TYPE>
-std::vector<std::wstring> SplitCommandLine(
-    const CHAR_TYPE* command_line);
-
-std::vector<std::wstring> SplitCommandLine(const wchar_t* command_line) {
-  return SplitCommandLineWide(command_line);
-}
-
-std::vector<std::wstring> SplitCommandLine(const char* command_line) {
-  // TODO(vchigrin): This is terribly inefficient shit-code since uses a LOT
-  // of encoding convertions.
-  std::wstring command_line_wide = base::ToWideFromANSI(command_line);
-  return SplitCommandLineWide(command_line_wide.c_str());
 }
 
 template<typename CHAR_TYPE>
@@ -465,20 +451,7 @@ bool ShouldAppendStdStreams(DWORD startup_info_flags) {
 
 class CreateProcessInvoker {
  public:
-  virtual BOOL InvokeActualFunction(
-      PROCESS_INFORMATION* process_information) = 0;
-  virtual const std::string& environment_hash() const = 0;
-  virtual bool IsStdStreamsUsed() const = 0;
-  virtual bool PrepareForDeferredExecution(
-      HANDLE stdinput_handle,
-      HANDLE stdout_handle, HANDLE stderr_handle) = 0;
-  virtual bool CanBeDeferred() const = 0;
-  virtual ~CreateProcessInvoker() {}
-};
-
-class CreateProcessInvokerImpl : public CreateProcessInvoker {
- public:
-  CreateProcessInvokerImpl(
+  CreateProcessInvoker(
     const WCHAR* application_name,
     const WCHAR* command_line,
     LPSECURITY_ATTRIBUTES process_attributes,
@@ -494,7 +467,7 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
         thread_attributes_(CopyStructIfNeed(thread_attributes)),
         inherit_handles_(inherit_handles),
         creation_flags_(creation_flags),
-        current_directory_(CopyStringIfNeed(current_directory)) {
+        utf8_strings_filled_(false) {
     if (environment) {
       size_t env_block_byte_size;
       if (creation_flags & CREATE_UNICODE_ENVIRONMENT) {
@@ -507,6 +480,14 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
       environment_.reset(new uint8_t[env_block_byte_size]);
       memcpy(environment_.get(), environment, env_block_byte_size);
     }
+    if (current_directory) {
+      current_directory_ = CopyStringIfNeed(current_directory);
+    } else {
+      // Grab directory now, since in case deffered execution
+      // process may already change directory after CreateProcess invokation.
+      boost::filesystem::path current_dir = boost::filesystem::current_path();
+      current_directory_ = CopyStringIfNeed(current_dir.wstring().c_str());
+    }
 
     environment_hash_ = ComputeEnvironmentHash(
         environment, creation_flags & CREATE_UNICODE_ENVIRONMENT);
@@ -516,7 +497,7 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     memcpy(startup_info_buffer_.get(), startup_info, startup_info->cb);
   }
 
-  ~CreateProcessInvokerImpl() override {
+  ~CreateProcessInvoker() {
     if (attr_list_buffer_) {
       DeleteProcThreadAttributeList(
           reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(
@@ -524,8 +505,7 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     }
   }
 
-  BOOL InvokeActualFunction(
-      PROCESS_INFORMATION* process_information) override {
+  BOOL InvokeActualFunction(PROCESS_INFORMATION* process_information) {
     BOOL result = CreateProcessW(
         application_name_.get(),
         command_line_.get(),
@@ -544,15 +524,15 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     return result;
   }
 
-  const std::string& environment_hash() const override {
+  const std::string& environment_hash() const {
     return environment_hash_;
   }
 
-  bool IsStdStreamsUsed() const override {
+  bool IsStdStreamsUsed() const {
     return startup_info()->dwFlags & STARTF_USESTDHANDLES;
   }
 
-  bool CanBeDeferred() const override {
+  bool CanBeDeferred() const {
     // We can not defer execution calls that use STARTUPINFOEX, since
     // WinAPI does not provode wayt to quesy ProcThreadAttributeList structure,
     // but we need this to update inheritable handle list.
@@ -624,7 +604,42 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     return true;
   }
 
+  const std::string& startup_dir_utf8() {
+    FillUTF8StringsIfNeed();
+    return startup_dir_utf8_;
+  }
+
+  const std::string& exe_path_utf8() {
+    FillUTF8StringsIfNeed();
+    return exe_path_utf8_;
+  }
+
+  const std::vector<std::string>& arguments_utf8() {
+    FillUTF8StringsIfNeed();
+    return arguments_utf8_;
+  }
+
  private:
+  void FillUTF8StringsIfNeed() {
+    if (utf8_strings_filled_)
+      return;
+    if (application_name_) {
+      exe_path_utf8_ = base::ToUTF8FromWide(application_name_.get());
+    }
+    if (command_line_) {
+      std::vector<std::wstring> arguments = SplitCommandLine(
+          command_line_.get());
+      for (const std::wstring& argument : arguments) {
+        arguments_utf8_.push_back(base::ToUTF8FromWide(argument));
+      }
+      if (exe_path_utf8_.empty() && !arguments_utf8_.empty())
+        exe_path_utf8_ = arguments_utf8_[0];
+    }
+    startup_dir_utf8_ = base::ToUTF8FromWide(
+        base::ToLongPathName(std::wstring(current_directory_.get())));
+    utf8_strings_filled_ = true;
+  }
+
   static std::unique_ptr<WCHAR[]> CopyStringIfNeed(const WCHAR* str) {
     if (!str)
       return nullptr;
@@ -665,13 +680,14 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
   std::unique_ptr<uint8_t[]> startup_info_buffer_;
   std::unique_ptr<uint8_t[]> attr_list_buffer_;
   std::vector<HANDLE> inherited_handles_;
+  bool utf8_strings_filled_;
+  std::string startup_dir_utf8_;
+  std::string exe_path_utf8_;
+  std::vector<std::string> arguments_utf8_;
 };
 
 struct CreateProcessThreadPoolProcCtx {
   std::unique_ptr<CreateProcessInvoker> invoker;
-  std::string exe_path;
-  std::string startup_dir_utf8;
-  std::vector<std::string> arguments_utf8;
   bool append_std_streams;
   bool request_suspended;
   void* hoax_proxy_id;
@@ -683,12 +699,13 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
   ExecutorIf* executor = GetExecutorForCurrentThread();
 
   CacheHitInfo cache_hit_info;
+  CreateProcessInvoker* invoker = ctx->invoker.get();
   executor->OnBeforeProcessCreate(
       cache_hit_info,
-      ctx->exe_path,
-      ctx->arguments_utf8,
-      ctx->startup_dir_utf8,
-      ctx->invoker->environment_hash());
+      invoker->exe_path_utf8(),
+      invoker->arguments_utf8(),
+      invoker->startup_dir_utf8(),
+      invoker->environment_hash());
   if (cache_hit_info.cache_hit) {
     ProcessProxyManager::GetInstance()->SyncFinishHoaxProxy(
         ctx->hoax_proxy_id,
@@ -700,7 +717,7 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
   base::ScopedHandle read_stderr_pipe;
   base::ScopedHandle write_stdout_pipe;
   base::ScopedHandle write_stderr_pipe;
-  if (ctx->invoker->IsStdStreamsUsed()) {
+  if (invoker->IsStdStreamsUsed()) {
     SECURITY_ATTRIBUTES security_attributes;
     memset(&security_attributes, 0, sizeof(security_attributes));
     security_attributes.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -724,12 +741,12 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
       LOG4CPLUS_FATAL(logger_, "CreatePipe fails, error " << error);
       return 0;
     }
-    ctx->invoker->PrepareForDeferredExecution(
+    invoker->PrepareForDeferredExecution(
         NULL,
         write_stdout_pipe.Get(),
         write_stderr_pipe.Get());
   }
-  if (!ctx->invoker->InvokeActualFunction(&process_information))
+  if (!invoker->InvokeActualFunction(&process_information))
     return 0;
   executor->OnSuspendedProcessCreated(
       process_information.dwProcessId,
@@ -766,32 +783,10 @@ BOOL WINAPI NewCreateProcessW(
     LPCWSTR current_directory,
     LPSTARTUPINFOW startup_info,
     LPPROCESS_INFORMATION process_information) {
-  std::string exe_path;
-  if (application_name) {
-    exe_path = base::ToUTF8FromWide(application_name);
-  }
-  std::vector<std::string> arguments_utf8;
-  if (command_line) {
-    std::vector<std::wstring> arguments = SplitCommandLine(command_line);
-    for (const std::wstring& argument: arguments) {
-      arguments_utf8.push_back(base::ToUTF8FromWide(argument));
-    }
-    if (exe_path.empty() && !arguments_utf8.empty())
-      exe_path = arguments_utf8[0];
-  }
-  std::string startup_dir_utf8;
-  if (current_directory) {
-    startup_dir_utf8 = base::ToUTF8FromWide(
-        base::ToLongPathName(std::wstring(current_directory)));
-  } else {
-    boost::filesystem::path current_dir = boost::filesystem::current_path();
-    startup_dir_utf8 = base::ToUTF8FromWide(current_dir.wstring());
-  }
   const bool append_std_streams = ShouldAppendStdStreams(
       startup_info->dwFlags);
-  creation_flags;
   std::unique_ptr<CreateProcessInvoker> actual_function_invoker(
-      new CreateProcessInvokerImpl(
+      new CreateProcessInvoker(
           application_name,
           command_line,
           process_attributes,
@@ -820,9 +815,6 @@ BOOL WINAPI NewCreateProcessW(
     ctx->hoax_proxy_id = hoax_proxy_id;
     ctx->append_std_streams = append_std_streams;
     ctx->request_suspended = request_suspended;
-    ctx->exe_path = std::move(exe_path);
-    ctx->startup_dir_utf8 = std::move(startup_dir_utf8);
-    ctx->arguments_utf8 = std::move(arguments_utf8);
     if (!QueueUserWorkItem(
         CreateProcessThreadPoolProc,
         ctx,
@@ -840,9 +832,9 @@ BOOL WINAPI NewCreateProcessW(
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
     GetExecutor()->OnBeforeProcessCreate(
         cache_hit_info,
-        exe_path,
-        arguments_utf8,
-        startup_dir_utf8,
+        actual_function_invoker->exe_path_utf8(),
+        actual_function_invoker->arguments_utf8(),
+        actual_function_invoker->startup_dir_utf8(),
         actual_function_invoker->environment_hash());
   }
   if (cache_hit_info.cache_hit) {
