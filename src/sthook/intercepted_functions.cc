@@ -58,18 +58,6 @@ typedef BOOL (WINAPI *LPCREATE_PROCESS_W)(
     LPSTARTUPINFOW startup_info,
     LPPROCESS_INFORMATION process_information);
 
-typedef BOOL (WINAPI *LPCREATE_PROCESS_A)(
-    LPCSTR application_name,
-    LPSTR command_line,
-    LPSECURITY_ATTRIBUTES process_attributes,
-    LPSECURITY_ATTRIBUTES thread_attributes,
-    BOOL inherit_handles,
-    DWORD creation_flags,
-    LPVOID environment,
-    LPCSTR current_directory,
-    LPSTARTUPINFOA startup_info,
-    LPPROCESS_INFORMATION process_information);
-
 typedef BOOL (WINAPI *LPGET_EXIT_CODE_PROCESS)(
     HANDLE process_handle,
     LPDWORD exit_code);
@@ -111,6 +99,7 @@ log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
 LPGET_EXIT_CODE_PROCESS g_original_GetExitCodeProcess;
 LPNTSET_INFORMATION_FILE g_original_NtSetInformationFile;
+LPCREATE_PROCESS_W g_original_CreateProcessW;
 
 
 std::wstring LongPathNameFromRootDirAndString(
@@ -502,7 +491,7 @@ class CreateProcessInvoker {
   }
 
   BOOL InvokeActualFunction(PROCESS_INFORMATION* process_information) {
-    BOOL result = CreateProcessW(
+    BOOL result = g_original_CreateProcessW(
         application_name_.get(),
         command_line_.get(),
         process_attributes_.get(),
@@ -962,8 +951,7 @@ BOOL WINAPI NewGetExitCodeProcess(
       return TRUE;
     }
   }
-  return g_original_GetExitCodeProcess(
-      process_handle, exit_code);
+  return g_original_GetExitCodeProcess(process_handle, exit_code);
 }
 
 void BeforeWriteFile(
@@ -1169,6 +1157,7 @@ bool InstallHooks(HMODULE current_module) {
   std::string kernel_module_name =
       (IsWindows8OrGreater() ? "kernelbase.dll" : "kernel32.dll");
   HMODULE kernel_module = GetModuleHandleA(kernel_module_name.c_str());
+  LOG4CPLUS_ASSERT(logger_, kernel_module);
   for (size_t i = 0;
       i < sizeof(g_intercepts_table) / sizeof(g_intercepts_table[0]); ++i) {
     g_intercepts_table[i](kernel_module, &kernel_intercepts);
@@ -1177,13 +1166,19 @@ bool InstallHooks(HMODULE current_module) {
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
           kernel_module_name, kernel_intercepts));
-  LOG4CPLUS_ASSERT(logger_, kernel_module);
+  // We do need get original addresses through GetProcAddress since
+  // on Windows Server 2012 we hook directly kernelbase.dll, but this module
+  // calls kernel32.dll. While this module protected from hooking, kernel32
+  // is not, so we can get infinite recursion.
+  g_original_CreateProcessW = reinterpret_cast<LPCREATE_PROCESS_W>(
+      GetProcAddress(kernel_module, "CreateProcessW"));
   g_original_GetExitCodeProcess = reinterpret_cast<LPGET_EXIT_CODE_PROCESS>(
       GetProcAddress(kernel_module, "GetExitCodeProcess"));
   g_original_NtSetInformationFile = reinterpret_cast<LPNTSET_INFORMATION_FILE>(
-      GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtSetInformationFile"));
+      GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtSetInformationFile"));
   LOG4CPLUS_ASSERT(logger_, g_original_GetExitCodeProcess);
   LOG4CPLUS_ASSERT(logger_, g_original_NtSetInformationFile);
+  LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   return GetInterceptor()->Hook(intercepts, current_module);
 }
 
@@ -1196,7 +1191,7 @@ void Initialize(HMODULE current_module) {
   ProcessProxyManager::Initialize(
       current_module,
       process_config.should_use_hoax_proxy,
-      &CreateProcessW);
+      g_original_CreateProcessW);
   g_should_buffer_std_streams =
       process_config.should_buffer_std_streams;
   g_should_ignore_output_files =
