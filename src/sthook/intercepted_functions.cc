@@ -101,10 +101,6 @@ static const int FileRenameInformation = 10;
     DO_IT(WriteFileEx, &BeforeWriteFileEx, nullptr, BOOL, \
           HANDLE, LPCVOID, DWORD, LPOVERLAPPED, \
           LPOVERLAPPED_COMPLETION_ROUTINE) \
-    DO_IT(WriteConsoleA, &BeforeWriteConsoleA, nullptr, BOOL, \
-          HANDLE, const VOID*, DWORD, LPDWORD, LPVOID) \
-    DO_IT(WriteConsoleW, &BeforeWriteConsoleW, nullptr, BOOL, \
-          HANDLE, const VOID*, DWORD, LPDWORD, LPVOID) \
     DO_IT(DuplicateHandle, nullptr, &AfterDuplicateHandle, BOOL, \
           HANDLE, HANDLE, HANDLE, LPHANDLE, DWORD, BOOL, DWORD) \
     DO_IT(DeleteFileA, nullptr, &AfterDeleteFileA, BOOL, LPCSTR) \
@@ -1014,60 +1010,6 @@ void BeforeWriteFileEx(
     } else {
       std::lock_guard<std::mutex> lock(g_executor_call_mutex);
       GetExecutor()->PushStdOutput(handle_type, data);
-    }
-  }
-}
-
-void BeforeWriteConsoleA(
-    HANDLE console_output,
-    const VOID *buffer,
-    DWORD number_of_chars_to_write,
-    LPDWORD number_of_chars_written,
-    LPVOID reserved) {
-  StdHandles::type handle_type = StdHandles::StdOutput;
-  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
-  if (instance && instance->IsStdHandle(console_output, &handle_type)) {
-    std::string data(
-        static_cast<const char*>(buffer),
-        number_of_chars_to_write * sizeof(CHAR));
-    if (g_should_buffer_std_streams) {
-      if (handle_type == StdHandles::StdOutput)
-        g_std_output_buffer += data;
-      else
-        g_std_error_buffer += data;
-    } else {
-      std::lock_guard<std::mutex> lock(g_executor_call_mutex);
-      GetExecutor()->PushStdOutput(handle_type, data);
-    }
-  }
-}
-
-void BeforeWriteConsoleW(
-    HANDLE console_output,
-    const VOID *buffer,
-    DWORD number_of_chars_to_write,
-    LPDWORD number_of_chars_written,
-    LPVOID reserved) {
-  StdHandles::type handle_type = StdHandles::StdOutput;
-  StdHandlesHolder* instance = StdHandlesHolder::GetInstance();
-  if (instance && instance->IsStdHandle(console_output, &handle_type)) {
-    // TODO(vchigrin): Is it OK to cache code-page dependent output data?
-    // May be we should convert to UTF-8 all output, both from
-    // WriteConsole and WriteFile?
-    DWORD code_page = GetConsoleOutputCP();
-    std::wstring wide_buffer(
-        static_cast<const wchar_t*>(buffer), number_of_chars_to_write);
-    std::string ansi_string = base::ToANSIFromWide(
-        wide_buffer,
-        code_page);
-    if (g_should_buffer_std_streams) {
-      if (handle_type == StdHandles::StdOutput)
-        g_std_output_buffer += ansi_string;
-      else
-        g_std_error_buffer += ansi_string;
-    } else {
-      std::lock_guard<std::mutex> lock(g_executor_call_mutex);
-      GetExecutor()->PushStdOutput(handle_type, ansi_string);
     }
   }
 }
