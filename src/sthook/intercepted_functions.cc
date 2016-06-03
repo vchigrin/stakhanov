@@ -112,8 +112,6 @@ static const int FileRenameInformation = 10;
 
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
-LPCREATE_PROCESS_W g_original_CreateProcessW;
-LPCREATE_PROCESS_A g_original_CreateProcessA;
 LPGET_EXIT_CODE_PROCESS g_original_GetExitCodeProcess;
 LPNTSET_INFORMATION_FILE g_original_NtSetInformationFile;
 
@@ -478,27 +476,19 @@ class CreateProcessInvoker {
   virtual ~CreateProcessInvoker() {}
 };
 
-template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
 class CreateProcessInvokerImpl : public CreateProcessInvoker {
  public:
-  struct STARTUPINFOEX_TYPE {
-    STARTUPINFO_TYPE StartupInfo;
-    PPROC_THREAD_ATTRIBUTE_LIST lpAttributeList;
-  };
-
   CreateProcessInvokerImpl(
-    FUNCTION actual_function,
-    const CHAR_TYPE* application_name,
-    const CHAR_TYPE* command_line,
+    const WCHAR* application_name,
+    const WCHAR* command_line,
     LPSECURITY_ATTRIBUTES process_attributes,
     LPSECURITY_ATTRIBUTES thread_attributes,
     BOOL inherit_handles,
     DWORD creation_flags,
     LPVOID environment,
-    const CHAR_TYPE* current_directory,
-    STARTUPINFO_TYPE* startup_info)
-      : actual_function_(actual_function),
-        application_name_(CopyStringIfNeed(application_name)),
+    const WCHAR* current_directory,
+    STARTUPINFOW* startup_info)
+      : application_name_(CopyStringIfNeed(application_name)),
         command_line_(CopyStringIfNeed(command_line)),
         process_attributes_(CopyStructIfNeed(process_attributes)),
         thread_attributes_(CopyStructIfNeed(thread_attributes)),
@@ -536,7 +526,7 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
 
   BOOL InvokeActualFunction(
       PROCESS_INFORMATION* process_information) override {
-    BOOL result = actual_function_(
+    BOOL result = CreateProcessW(
         application_name_.get(),
         command_line_.get(),
         process_attributes_.get(),
@@ -569,7 +559,7 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     // Moreover, we will encounter lifetime issues since
     // ProcThreadAttributeList contain pointers to memory that is managed by
     // client process.
-    return startup_info()->cb == sizeof(STARTUPINFO_TYPE);
+    return startup_info()->cb == sizeof(STARTUPINFOW);
   }
 
   bool PrepareForDeferredExecution(
@@ -581,13 +571,13 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     // stdout, stderr, etc. So use new feature of selectable handles
     // inheritance.
     std::unique_ptr<uint8_t[]> new_startup_info_buffer(
-        new uint8_t[sizeof(STARTUPINFOEX_TYPE)]);
+        new uint8_t[sizeof(STARTUPINFOEXW)]);
     memcpy(new_startup_info_buffer.get(),
            startup_info_buffer_.get(),
            startup_info()->cb);
-    STARTUPINFOEX_TYPE* new_startupinfo =
-        reinterpret_cast<STARTUPINFOEX_TYPE*>(new_startup_info_buffer.get());
-    new_startupinfo->StartupInfo.cb = sizeof(STARTUPINFOEX_TYPE);
+    STARTUPINFOEXW* new_startupinfo =
+        reinterpret_cast<STARTUPINFOEXW*>(new_startup_info_buffer.get());
+    new_startupinfo->StartupInfo.cb = sizeof(STARTUPINFOEXW);
     SIZE_T attr_list_size = 0;
     InitializeProcThreadAttributeList(NULL, 1, 0, &attr_list_size);
     if (!attr_list_size) {
@@ -635,13 +625,13 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
   }
 
  private:
-  static std::unique_ptr<CHAR_TYPE[]> CopyStringIfNeed(const CHAR_TYPE* str) {
+  static std::unique_ptr<WCHAR[]> CopyStringIfNeed(const WCHAR* str) {
     if (!str)
       return nullptr;
     size_t len = base::StringCharLen(str);
     ++len;  // For zero terminator.
-    std::unique_ptr<CHAR_TYPE[]> result(new CHAR_TYPE[len]);
-    memcpy(result.get(), str, len * sizeof(CHAR_TYPE));
+    std::unique_ptr<WCHAR[]> result(new WCHAR[len]);
+    memcpy(result.get(), str, len * sizeof(WCHAR));
     return result;
   }
 
@@ -654,25 +644,24 @@ class CreateProcessInvokerImpl : public CreateProcessInvoker {
     return result;
   }
 
-  STARTUPINFO_TYPE* startup_info() {
-    return reinterpret_cast<STARTUPINFO_TYPE*>(startup_info_buffer_.get());
+  STARTUPINFOW* startup_info() {
+    return reinterpret_cast<STARTUPINFOW*>(startup_info_buffer_.get());
   }
 
-  const STARTUPINFO_TYPE* startup_info() const {
-    return reinterpret_cast<const STARTUPINFO_TYPE*>(
+  const STARTUPINFOW* startup_info() const {
+    return reinterpret_cast<const STARTUPINFOW*>(
         startup_info_buffer_.get());
   }
 
-  FUNCTION actual_function_;
-  std::unique_ptr<CHAR_TYPE[]> application_name_;
-  std::unique_ptr<CHAR_TYPE[]> command_line_;
+  std::unique_ptr<WCHAR[]> application_name_;
+  std::unique_ptr<WCHAR[]> command_line_;
   std::unique_ptr<SECURITY_ATTRIBUTES> process_attributes_;
   std::unique_ptr<SECURITY_ATTRIBUTES> thread_attributes_;
   BOOL inherit_handles_;
   DWORD creation_flags_;
   std::unique_ptr<uint8_t[]> environment_;
   std::string environment_hash_;
-  std::unique_ptr<CHAR_TYPE[]> current_directory_;
+  std::unique_ptr<WCHAR[]> current_directory_;
   std::unique_ptr<uint8_t[]> startup_info_buffer_;
   std::unique_ptr<uint8_t[]> attr_list_buffer_;
   std::vector<HANDLE> inherited_handles_;
@@ -766,24 +755,20 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
   return 0;
 }
 
-template<typename CHAR_TYPE, typename STARTUPINFO_TYPE, typename FUNCTION>
-BOOL CreateProcessImpl(
-    FUNCTION actual_function,
-    const CHAR_TYPE* application_name,
-    CHAR_TYPE* command_line,
+BOOL WINAPI NewCreateProcessW(
+    LPCWSTR application_name,
+    LPWSTR command_line,
     LPSECURITY_ATTRIBUTES process_attributes,
     LPSECURITY_ATTRIBUTES thread_attributes,
     BOOL inherit_handles,
     DWORD creation_flags,
     LPVOID environment,
-    const CHAR_TYPE* current_directory,
-    STARTUPINFO_TYPE* startup_info,
+    LPCWSTR current_directory,
+    LPSTARTUPINFOW startup_info,
     LPPROCESS_INFORMATION process_information) {
-
   std::string exe_path;
   if (application_name) {
-    exe_path = base::ToUTF8(
-        std::basic_string<CHAR_TYPE>(application_name));
+    exe_path = base::ToUTF8FromWide(application_name);
   }
   std::vector<std::string> arguments_utf8;
   if (command_line) {
@@ -796,8 +781,8 @@ BOOL CreateProcessImpl(
   }
   std::string startup_dir_utf8;
   if (current_directory) {
-    startup_dir_utf8 = base::ToUTF8(
-        base::ToLongPathName(std::basic_string<CHAR_TYPE>(current_directory)));
+    startup_dir_utf8 = base::ToUTF8FromWide(
+        base::ToLongPathName(std::wstring(current_directory)));
   } else {
     boost::filesystem::path current_dir = boost::filesystem::current_path();
     startup_dir_utf8 = base::ToUTF8FromWide(current_dir.wstring());
@@ -806,8 +791,7 @@ BOOL CreateProcessImpl(
       startup_info->dwFlags);
   creation_flags;
   std::unique_ptr<CreateProcessInvoker> actual_function_invoker(
-      new CreateProcessInvokerImpl<CHAR_TYPE, STARTUPINFO_TYPE, FUNCTION>(
-          actual_function,
+      new CreateProcessInvokerImpl(
           application_name,
           command_line,
           process_attributes,
@@ -887,6 +871,27 @@ BOOL CreateProcessImpl(
   return TRUE;
 }
 
+// Helper class for converting from ANSI to wide characters of hooked
+// CreateProcessA.
+class ToWideConvertWithBuffer {
+ public:
+  explicit ToWideConvertWithBuffer(const char* ansi_string) {
+    if (ansi_string) {
+      std::wstring wide_string = base::ToWideFromANSI(ansi_string);
+      buffer_.reset(new wchar_t[wide_string.length() + 1]);
+      std::copy(wide_string.begin(), wide_string.end(), &buffer_[0]);
+      buffer_[wide_string.length()] = L'\0';
+    }
+  }
+
+  wchar_t* wide_buffer() {
+    // Non-const buffer since command_line parameter of CreateProcess
+    // requires non-const buffer.
+    return buffer_.get();
+  }
+ private:
+  std::unique_ptr<wchar_t[]> buffer_;
+};
 
 BOOL WINAPI NewCreateProcessA(
     LPCSTR application_name,
@@ -899,42 +904,57 @@ BOOL WINAPI NewCreateProcessA(
     LPCSTR current_directory,
     LPSTARTUPINFOA startup_info,
     LPPROCESS_INFORMATION process_information) {
-  return CreateProcessImpl(
-      g_original_CreateProcessA,
-      application_name,
-      command_line,
-      process_attributes,
-      thread_attributes,
-      inherit_handles,
-      creation_flags,
-      environment,
-      current_directory,
-      startup_info,
-      process_information);
-}
+  ToWideConvertWithBuffer application_name_wide(application_name);
+  ToWideConvertWithBuffer command_line_wide(command_line);
+  ToWideConvertWithBuffer current_directory_wide(current_directory);
+  STARTUPINFOEXW startup_info_wide;
+  memset(&startup_info_wide, 0, sizeof(startup_info_wide));
+  if (startup_info->cb == sizeof(STARTUPINFOA)) {
+    startup_info_wide.StartupInfo.cb = sizeof(STARTUPINFOW);
+  } else if (startup_info->cb == sizeof(STARTUPINFOEXA)) {
+    startup_info_wide.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+    startup_info_wide.lpAttributeList =
+        reinterpret_cast<const STARTUPINFOEXA*>(startup_info)->lpAttributeList;
+  } else {
+    LOG4CPLUS_FATAL(
+        logger_, "Unexpected size of STARTUPINFO " << startup_info->cb);
+    return FALSE;
+  }
+  ToWideConvertWithBuffer reserved_wide(startup_info->lpReserved);
+  ToWideConvertWithBuffer desktop_wide(startup_info->lpDesktop);
+  ToWideConvertWithBuffer title_wide(startup_info->lpTitle);
 
-BOOL WINAPI NewCreateProcessW(
-    LPCWSTR application_name,
-    LPWSTR command_line,
-    LPSECURITY_ATTRIBUTES process_attributes,
-    LPSECURITY_ATTRIBUTES thread_attributes,
-    BOOL inherit_handles,
-    DWORD creation_flags,
-    LPVOID environment,
-    LPCWSTR current_directory,
-    LPSTARTUPINFOW startup_info,
-    LPPROCESS_INFORMATION process_information) {
-  return CreateProcessImpl(
-      g_original_CreateProcessW,
-      application_name,
-      command_line,
+
+  startup_info_wide.StartupInfo.lpReserved = reserved_wide.wide_buffer();
+  startup_info_wide.StartupInfo.lpDesktop = desktop_wide.wide_buffer();
+  startup_info_wide.StartupInfo.lpTitle = title_wide.wide_buffer();
+  startup_info_wide.StartupInfo.dwX = startup_info->dwX;
+  startup_info_wide.StartupInfo.dwY = startup_info->dwY;
+  startup_info_wide.StartupInfo.dwXSize = startup_info->dwXSize;
+  startup_info_wide.StartupInfo.dwYSize = startup_info->dwYSize;
+  startup_info_wide.StartupInfo.dwXCountChars = startup_info->dwXCountChars;
+  startup_info_wide.StartupInfo.dwYCountChars = startup_info->dwYCountChars;
+  startup_info_wide.StartupInfo.dwFillAttribute =
+      startup_info->dwFillAttribute;
+  startup_info_wide.StartupInfo.dwFlags = startup_info->dwFlags;
+  startup_info_wide.StartupInfo.wShowWindow = startup_info->wShowWindow;
+  startup_info_wide.StartupInfo.cbReserved2 = startup_info->cbReserved2;
+  startup_info_wide.StartupInfo.lpReserved2 = startup_info->lpReserved2;
+  startup_info_wide.StartupInfo.hStdInput = startup_info->hStdInput;
+  startup_info_wide.StartupInfo.hStdOutput = startup_info->hStdOutput;
+  startup_info_wide.StartupInfo.hStdError = startup_info->hStdError;
+
+
+  return NewCreateProcessW(
+      application_name_wide.wide_buffer(),
+      command_line_wide.wide_buffer(),
       process_attributes,
       thread_attributes,
       inherit_handles,
       creation_flags,
       environment,
-      current_directory,
-      startup_info,
+      current_directory_wide.wide_buffer(),
+      &startup_info_wide.StartupInfo,
       process_information);
 }
 
@@ -1224,16 +1244,10 @@ bool InstallHooks(HMODULE current_module) {
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
           kernel_module_name, kernel_intercepts));
   LOG4CPLUS_ASSERT(logger_, kernel_module);
-  g_original_CreateProcessW = reinterpret_cast<LPCREATE_PROCESS_W>(
-      GetProcAddress(kernel_module, "CreateProcessW"));
-  g_original_CreateProcessA = reinterpret_cast<LPCREATE_PROCESS_A>(
-      GetProcAddress(kernel_module, "CreateProcessA"));
   g_original_GetExitCodeProcess = reinterpret_cast<LPGET_EXIT_CODE_PROCESS>(
       GetProcAddress(kernel_module, "GetExitCodeProcess"));
   g_original_NtSetInformationFile = reinterpret_cast<LPNTSET_INFORMATION_FILE>(
       GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtSetInformationFile"));
-  LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
-  LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessA);
   LOG4CPLUS_ASSERT(logger_, g_original_GetExitCodeProcess);
   LOG4CPLUS_ASSERT(logger_, g_original_NtSetInformationFile);
   return GetInterceptor()->Hook(intercepts, current_module);
@@ -1245,11 +1259,10 @@ void Initialize(HMODULE current_module) {
   }
   ProcessConfigInfo process_config;
   GetExecutor()->GetProcessConfig(process_config);
-  LOG4CPLUS_ASSERT(logger_, g_original_CreateProcessW);
   ProcessProxyManager::Initialize(
       current_module,
       process_config.should_use_hoax_proxy,
-      g_original_CreateProcessW);
+      &CreateProcessW);
   g_should_buffer_std_streams =
       process_config.should_buffer_std_streams;
   g_should_ignore_output_files =
