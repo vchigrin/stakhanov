@@ -469,6 +469,8 @@ class CreateProcessInvoker {
       }
       environment_.reset(new uint8_t[env_block_byte_size]);
       memcpy(environment_.get(), environment, env_block_byte_size);
+    } else {
+      // TODO(vchigrin): Grab current environment
     }
     if (current_directory) {
       current_directory_ = CopyStringIfNeed(current_directory);
