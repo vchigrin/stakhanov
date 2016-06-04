@@ -63,6 +63,9 @@ typedef BOOL (WINAPI *LPGET_EXIT_CODE_PROCESS)(
     HANDLE process_handle,
     LPDWORD exit_code);
 
+typedef FARPROC (WINAPI *LPGET_PROC_ADDRESS_FOR_CALLER)(
+    HMODULE module, LPCSTR proc_name, void* unknown);
+
 typedef struct _FILE_RENAME_INFORMATION {
   BOOLEAN ReplaceIfExists;
   HANDLE  RootDirectory;
@@ -101,6 +104,7 @@ log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 LPGET_EXIT_CODE_PROCESS g_original_GetExitCodeProcess;
 LPNTSET_INFORMATION_FILE g_original_NtSetInformationFile;
 LPCREATE_PROCESS_W g_original_CreateProcessW;
+LPGET_PROC_ADDRESS_FOR_CALLER g_original_GetProcAddressForCaller;
 
 
 std::wstring LongPathNameFromRootDirAndString(
@@ -922,6 +926,14 @@ FARPROC WINAPI NewGetProcAddress(HMODULE module, LPCSTR proc_name) {
   return static_cast<FARPROC>(replacement ? replacement : result);
 }
 
+FARPROC WINAPI NewGetProcAddressForCaller(
+    HMODULE module, LPCSTR proc_name, void* unknown) {
+  void* result = g_original_GetProcAddressForCaller(
+      module, proc_name, unknown);
+  void* replacement = GetInterceptor()->GetReplacement(result);
+  return static_cast<FARPROC>(replacement ? replacement : result);
+}
+
 BOOL WINAPI NewGetExitCodeProcess(
     HANDLE process_handle,
     LPDWORD exit_code) {
@@ -1110,6 +1122,22 @@ REGISTRATION_PTR g_intercepts_table[] = {
 };
 
 bool InstallHooks(HMODULE current_module) {
+  // Why we hook different kernel modules:
+  // On Windows7 some functions, like CreateProcess* are not exported by
+  // kernelbase.dll, and kernel32 should be used.
+  // On Windows 10, Windows Server 2012, we must hook kernelbase, since
+  // cmd.exe on these systems links directly with it, and kernel32 hooks is not
+  // enough. Fortunately, on these systems CreateProces* functions are
+  // exported by kernelbase.
+  std::string kernel_module_name =
+      (IsWindows8OrGreater() ? "kernelbase.dll" : "kernel32.dll");
+  HMODULE kernel_module = GetModuleHandleA(kernel_module_name.c_str());
+
+  // May be NULL on Windows 7 and older.
+  g_original_GetProcAddressForCaller =
+      reinterpret_cast<LPGET_PROC_ADDRESS_FOR_CALLER>(
+          GetProcAddress(kernel_module, "GetProcAddressForCaller"));
+
   FunctionsInterceptor::DllInterceptedFunctions ntdll_intercepts;
   FunctionsInterceptor::DllInterceptedFunctions kernel_intercepts;
   ntdll_intercepts.insert(std::make_pair("NtCreateFile", &NewNtCreateFile));
@@ -1124,20 +1152,18 @@ bool InstallHooks(HMODULE current_module) {
       std::make_pair("GetExitCodeProcess", &NewGetExitCodeProcess));
   kernel_intercepts.insert(
       std::make_pair("GetProcAddress", &NewGetProcAddress));
+  if (g_original_GetProcAddressForCaller) {
+    // Specific to Windows 2012 server - there kernel32!GetProcAddressStub
+    // calls kernelbase!GetProcAddressForCaller
+    kernel_intercepts.insert(
+        std::make_pair(
+            "GetProcAddressForCaller", &NewGetProcAddressForCaller));
+  }
+
   FunctionsInterceptor::Intercepts intercepts;
   intercepts.insert(
       std::pair<std::string, FunctionsInterceptor::DllInterceptedFunctions>(
           "ntdll.dll", ntdll_intercepts));
-  // Why we hook different kernel modules:
-  // On Windows7 some functions, like CreateProcess* are not exported by
-  // kernelbase.dll, and kernel32 should be used.
-  // On Windows 10, Windows Server 2012, we must hook kernelbase, since
-  // cmd.exe on these systems links directly with it, and kernel32 hooks is not
-  // enough. Fortunately, on these systems CreateProces* functions are
-  // exported by kernelbase.
-  std::string kernel_module_name =
-      (IsWindows8OrGreater() ? "kernelbase.dll" : "kernel32.dll");
-  HMODULE kernel_module = GetModuleHandleA(kernel_module_name.c_str());
   LOG4CPLUS_ASSERT(logger_, kernel_module);
   for (size_t i = 0;
       i < sizeof(g_intercepts_table) / sizeof(g_intercepts_table[0]); ++i) {
