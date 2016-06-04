@@ -12,6 +12,8 @@
 #include "base/scoped_handle.h"
 #include "gen-cpp/Executor.h"
 
+class ReadingPipe;
+
 class ProcessProxyManager {
  public:
   typedef BOOL (WINAPI *LPCREATE_PROCESS_W)(
@@ -54,8 +56,8 @@ class ProcessProxyManager {
   void SyncDriveRealProcess(
       void* hoax_proxy_id,
       HANDLE process_handle,
-      const base::ScopedHandle& read_stdout_handle,
-      const base::ScopedHandle& read_stderr_handle);
+      const std::unique_ptr<ReadingPipe>& stdout_pipe,
+      const std::unique_ptr<ReadingPipe>& stderr_pipe);
   bool is_safe_to_use_hoax_proxy() const {
     return is_safe_to_use_hoax_proxy_;
   }

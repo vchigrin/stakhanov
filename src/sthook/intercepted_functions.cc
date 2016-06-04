@@ -29,6 +29,7 @@
 #include "sthook/intercept_helper.h"
 #include "sthook/sthook_communication.h"
 #include "sthook/std_handles_holder.h"
+#include "sthook/reading_pipe.h"
 #include "sthook/process_proxy_manager.h"
 #include "third_party/cryptopp/md5.h"
 #include "thrift/protocol/TBinaryProtocol.h"
@@ -698,54 +699,34 @@ DWORD WINAPI CreateProcessThreadPoolProc(VOID* ctx_ptr) {
     return 0;
   }
   PROCESS_INFORMATION process_information;
-  base::ScopedHandle read_stdout_pipe;
-  base::ScopedHandle read_stderr_pipe;
-  base::ScopedHandle write_stdout_pipe;
-  base::ScopedHandle write_stderr_pipe;
-  if (invoker->IsStdStreamsUsed()) {
-    SECURITY_ATTRIBUTES security_attributes;
-    memset(&security_attributes, 0, sizeof(security_attributes));
-    security_attributes.nLength = sizeof(SECURITY_ATTRIBUTES);
-    security_attributes.bInheritHandle = TRUE;
+  std::unique_ptr<ReadingPipe> stdout_pipe;
+  std::unique_ptr<ReadingPipe> stderr_pipe;
 
-    if (!CreatePipe(
-        read_stdout_pipe.Receive(),
-        write_stdout_pipe.Receive(),
-        &security_attributes,
-        0)) {
-      DWORD error = GetLastError();
-      LOG4CPLUS_FATAL(logger_, "CreatePipe fails, error " << error);
-      return 0;
-    }
-    if (!CreatePipe(
-        read_stderr_pipe.Receive(),
-        write_stderr_pipe.Receive(),
-        &security_attributes,
-        0)) {
-      DWORD error = GetLastError();
-      LOG4CPLUS_FATAL(logger_, "CreatePipe fails, error " << error);
-      return 0;
-    }
+  if (invoker->IsStdStreamsUsed()) {
+    stdout_pipe.reset(new ReadingPipe());
+    stderr_pipe.reset(new ReadingPipe());
     invoker->PrepareForDeferredExecution(
         NULL,
-        write_stdout_pipe.Get(),
-        write_stderr_pipe.Get());
+        stdout_pipe->write_handle_for_child(),
+        stderr_pipe->write_handle_for_child());
   }
   if (!invoker->InvokeActualFunction(&process_information))
     return 0;
+  if (stdout_pipe)
+    stdout_pipe->CloseWriteHandle();
+  if (stderr_pipe)
+    stderr_pipe->CloseWriteHandle();
   executor->OnSuspendedProcessCreated(
       process_information.dwProcessId,
       process_information.dwThreadId,
       cache_hit_info.executor_command_id,
       ctx->append_std_streams,
       ctx->request_suspended);
-  write_stdout_pipe.Close();
-  write_stderr_pipe.Close();
   ProcessProxyManager::GetInstance()->SyncDriveRealProcess(
       ctx->hoax_proxy_id,
       process_information.hProcess,
-      read_stdout_pipe,
-      read_stderr_pipe);
+      stdout_pipe,
+      stderr_pipe);
   if (!CloseHandle(process_information.hThread)) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "Failed close thread handle error " << error);

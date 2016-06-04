@@ -12,6 +12,8 @@ add_library(sthook SHARED
   intercepted_functions.h
   process_proxy_manager.cc
   process_proxy_manager.h
+  reading_pipe.cc
+  reading_pipe.h
   std_handles_holder.cc
   std_handles_holder.h
 )

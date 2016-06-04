@@ -10,6 +10,7 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "stproxy/stproxy_communication.h"
+#include "sthook/reading_pipe.h"
 
 namespace {
 
@@ -17,17 +18,19 @@ const wchar_t kStProxyExeName[] = L"stproxy.exe";
 log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
     L"ProcessProxyManager");
 
-bool PutString(HANDLE file, const std::string& data_to_put) {
-  if (data_to_put.empty())
+bool PutData(const base::ScopedHandle& write_handle,
+             const char* data,
+             int data_size) {
+  if (data_size <= 0)
     return true;
   DWORD bytes_written = 0;
   BOOL success = WriteFile(
-      file,
-      data_to_put.data(),
-      static_cast<DWORD>(data_to_put.length()),
+      write_handle.Get(),
+      data,
+      data_size,
       &bytes_written,
       NULL);
-  if (!success || bytes_written != data_to_put.length()) {
+  if (!success || bytes_written != data_size) {
     DWORD error = GetLastError();
     LOG4CPLUS_ERROR(logger_, "Failed write std stream. Error " << error);
     return false;
@@ -35,37 +38,15 @@ bool PutString(HANDLE file, const std::string& data_to_put) {
   return true;
 }
 
-bool TransferBlock(
-    const base::ScopedHandle& read_handle,
-    const base::ScopedHandle& write_handle) {
-  uint8_t buffer[1024];
-  DWORD bytes_read = 0;
-  if (!ReadFile(
-      read_handle.Get(),
-      buffer,
-      sizeof(buffer),
-      &bytes_read,
-      NULL)) {
-    DWORD error = GetLastError();
-    if (error == ERROR_BROKEN_PIPE)
-      return true;  // Read from child process finished.
-    LOG4CPLUS_ERROR(
-        logger_, "ReadFile failed. Error " << error << " READ " << bytes_read);
-    return false;
+bool TransferDataAndReissueReadIfNeed(
+    const base::ScopedHandle& write_handle,
+    const std::unique_ptr<ReadingPipe>& pipe) {
+  int bytes_read = pipe->CompleteReadAndGetBytesTransfered();
+  if (bytes_read > 0) {
+    PutData(write_handle, pipe->buffer().data(), bytes_read);
+    return pipe->IssueRead();
   }
-  DWORD bytes_written = 0;
-  BOOL success = WriteFile(
-      write_handle.Get(),
-      buffer,
-      bytes_read,
-      &bytes_written,
-      NULL);
-  if (!success || bytes_written != bytes_read) {
-    DWORD error = GetLastError();
-    LOG4CPLUS_ERROR(logger_, "WriteFile failed. Error " << error);
-    return false;
-  }
-  return true;
+  return false;
 }
 
 struct HoaxWorkItemContext {
@@ -82,8 +63,12 @@ struct HoaxWorkItemContext {
 
 DWORD CALLBACK HoaxThreadPoolProc(void* param) {
   HoaxWorkItemContext* ctx = static_cast<HoaxWorkItemContext*>(param);
-  PutString(ctx->std_output_handle.Get(), ctx->result_stdout);
-  PutString(ctx->std_error_handle.Get(), ctx->result_stderr);
+  PutData(ctx->std_output_handle,
+          ctx->result_stdout.data(),
+          static_cast<int>(ctx->result_stdout.size()));
+  PutData(ctx->std_error_handle,
+          ctx->result_stderr.data(),
+          static_cast<int>(ctx->result_stderr.size()));
   SetEvent(ctx->process_handle.Get());
   SetEvent(ctx->thread_handle.Get());
   delete ctx;
@@ -261,23 +246,29 @@ void ProcessProxyManager::SyncFinishHoaxProxy(
 void ProcessProxyManager::SyncDriveRealProcess(
     void* hoax_proxy_id,
     HANDLE process_handle,
-    const base::ScopedHandle& read_stdout_handle,
-    const base::ScopedHandle& read_stderr_handle) {
+    const std::unique_ptr<ReadingPipe>& stdout_pipe,
+    const std::unique_ptr<ReadingPipe>& stderr_pipe) {
   std::unique_ptr<HoaxWorkItemContext> ctx(
       static_cast<HoaxWorkItemContext*>(hoax_proxy_id));
-  HANDLE wait_handles[3];
-  DWORD handle_count = 0;
+  std::vector<HANDLE> wait_handles;
+  wait_handles.reserve(3);
   // Ensure stream handles go first, so in case process termination
   // they will be signales first.
-  if (read_stdout_handle.IsValid() && ctx->std_output_handle.IsValid())
-    wait_handles[handle_count++] = read_stdout_handle.Get();
-  if (read_stderr_handle.IsValid() && ctx->std_error_handle.IsValid())
-    wait_handles[handle_count++] = read_stderr_handle.Get();
-  wait_handles[handle_count++] = process_handle;
-  bool completed = false;
-  while (!completed) {
+  if (stdout_pipe && ctx->std_output_handle.IsValid()) {
+    stdout_pipe->IssueRead();
+    wait_handles.push_back(stdout_pipe->wait_handle());
+  }
+  if (stderr_pipe && ctx->std_error_handle.IsValid()) {
+    stderr_pipe->IssueRead();
+    wait_handles.push_back(stderr_pipe->wait_handle());
+  }
+  wait_handles.push_back(process_handle);
+  while (!wait_handles.empty()) {
     DWORD wait_result = WaitForMultipleObjects(
-        handle_count, wait_handles, FALSE, INFINITE);
+        static_cast<DWORD>(wait_handles.size()),
+        wait_handles.data(),
+        FALSE,
+        INFINITE);
     if (wait_result == WAIT_FAILED) {
       DWORD error = GetLastError();
       LOG4CPLUS_ERROR(
@@ -285,17 +276,19 @@ void ProcessProxyManager::SyncDriveRealProcess(
       return;
     }
     DWORD index = wait_result - WAIT_OBJECT_0;
-    if (wait_handles[index] == read_stdout_handle.Get()) {
-      if (!TransferBlock(read_stdout_handle, ctx->std_output_handle)) {
-        return;
+    if (stdout_pipe && wait_handles[index] == stdout_pipe->wait_handle()) {
+      if (!TransferDataAndReissueReadIfNeed(
+          ctx->std_output_handle, stdout_pipe)) {
+        wait_handles.erase(wait_handles.begin() + index);
+        continue;
       }
-      continue;
     }
-    if (wait_handles[index] == read_stderr_handle.Get()) {
-      if (!TransferBlock(read_stderr_handle, ctx->std_error_handle)) {
-        return;
+    if (stderr_pipe && wait_handles[index] == stderr_pipe->wait_handle()) {
+      if (!TransferDataAndReissueReadIfNeed(
+          ctx->std_error_handle, stderr_pipe)) {
+        wait_handles.erase(wait_handles.begin() + index);
+        continue;
       }
-      continue;
     }
     if (wait_handles[index] == process_handle) {
       DWORD exit_code = 0;
@@ -310,16 +303,16 @@ void ProcessProxyManager::SyncDriveRealProcess(
         std::lock_guard<std::mutex> lock(process_handle_to_exit_code_lock_);
         process_handle_to_exit_code_[ctx->client_process_handle] = exit_code;
       }
-      completed = true;
-      if (!SetEvent(ctx->process_handle.Get())) {
-        DWORD error = GetLastError();
-        LOG4CPLUS_ERROR(logger_, "Failed set process event, error " << error);
-      }
-      if (!SetEvent(ctx->thread_handle.Get())) {
-        DWORD error = GetLastError();
-        LOG4CPLUS_ERROR(logger_, "Failed set process event, error " << error);
-      }
+      wait_handles.erase(wait_handles.begin() + index);
     }
+  }
+  if (!SetEvent(ctx->process_handle.Get())) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "Failed set process event, error " << error);
+  }
+  if (!SetEvent(ctx->thread_handle.Get())) {
+    DWORD error = GetLastError();
+    LOG4CPLUS_ERROR(logger_, "Failed set process event, error " << error);
   }
 }
 
