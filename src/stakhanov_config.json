@@ -69,5 +69,10 @@
   "files_filtering": {
     "safe_to_drop_output_extensions": [".ilk", ".pyc", ".pyo"],
     "safe_to_drop_input_extensions": [".pyc", ".pyo"]
+  },
+  "redis": {
+    "master_ip": "127.0.0.1",
+    "slave_ip": "127.0.0.1",
+    "port": 6379
   }
 }

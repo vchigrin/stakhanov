@@ -214,22 +214,8 @@ int main(int argc, char* argv[]) {
        boost::program_options::value<boost::filesystem::path>(),
         "Directory to dump observed rules for debugging purposes");
 
-  boost::program_options::options_description redis_desc(
-      "Redis rules mapper options");
-  redis_desc.add_options()
-      ("redis_master_ip",
-       boost::program_options::value<std::string>()->default_value(
-           "127.0.0.1"),
-       "IP of the Redis master server")
-      ("redis_slave_ip",
-       boost::program_options::value<std::string>()->default_value(
-           "127.0.0.1"),
-       "IP of the Redis slave server")
-      ("redis_port",
-       boost::program_options::value<int>()->default_value(6379),
-       "Port of the Redis server");
   boost::program_options::options_description desc;
-  desc.add(general_desc).add(in_memory_desc).add(redis_desc);
+  desc.add(general_desc).add(in_memory_desc);
 
   boost::program_options::variables_map variables;
   try {
@@ -274,10 +260,11 @@ int main(int argc, char* argv[]) {
       nt_set_event_addr);
 
   boost::property_tree::ptree config = LoadConfig(variables);
+  boost::property_tree::ptree redis_node = config.get_child("redis");
 
-  std::string redis_master_ip = variables["redis_master_ip"].as<std::string>();
-  std::string redis_slave_ip = variables["redis_slave_ip"].as<std::string>();
-  int redis_port = variables["redis_port"].as<int>();
+  std::string redis_master_ip = redis_node.get<std::string>("master_ip");
+  std::string redis_slave_ip = redis_node.get<std::string>("slave_ip");
+  int redis_port = redis_node.get<int>("port");
 
   std::shared_ptr<RedisClientPool> redis_client_pool =
       std::make_shared<RedisClientPool>(
