@@ -217,10 +217,14 @@ int main(int argc, char* argv[]) {
   boost::program_options::options_description redis_desc(
       "Redis rules mapper options");
   redis_desc.add_options()
-      ("redis_ip",
+      ("redis_master_ip",
        boost::program_options::value<std::string>()->default_value(
            "127.0.0.1"),
-       "IP of the Redis server")
+       "IP of the Redis master server")
+      ("redis_slave_ip",
+       boost::program_options::value<std::string>()->default_value(
+           "127.0.0.1"),
+       "IP of the Redis slave server")
       ("redis_port",
        boost::program_options::value<int>()->default_value(6379),
        "Port of the Redis server");
@@ -271,11 +275,13 @@ int main(int argc, char* argv[]) {
 
   boost::property_tree::ptree config = LoadConfig(variables);
 
-  std::string redis_ip = variables["redis_ip"].as<std::string>();
+  std::string redis_master_ip = variables["redis_master_ip"].as<std::string>();
+  std::string redis_slave_ip = variables["redis_slave_ip"].as<std::string>();
   int redis_port = variables["redis_port"].as<int>();
 
   std::shared_ptr<RedisClientPool> redis_client_pool =
-      std::make_shared<RedisClientPool>(redis_ip, redis_port);
+      std::make_shared<RedisClientPool>(
+          redis_master_ip, redis_slave_ip, redis_port);
 
   std::unique_ptr<FilesStorage> file_storage(
       new DistributedFilesStorage(config, redis_client_pool));

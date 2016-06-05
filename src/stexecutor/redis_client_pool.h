@@ -14,12 +14,16 @@
 
 class RedisSyncClient;
 
-// Manages set of Redis client, creating them as need.
+enum class RedisClientType {
+  READ_WRITE,  // Connected to Redis master.
+  READ_ONLY  // May be connected to Redis slave.
+};
+
+// Manages set of Redis clients, creating them as need.
 // Need to parallelize RedisRulesMapper.
 // This class is thread-safe.
 class RedisClientPool {
  public:
-
   class Result {
    public:
      RedisSyncClient* client() {
@@ -27,39 +31,52 @@ class RedisClientPool {
      }
 
      ~Result() {
-       pool_->ReturnClient(std::move(client_));
+       pool_->ReturnClient(std::move(client_), client_type_);
      }
 
      Result(Result&& second)
          : client_(std::move(second.client_)),
-           pool_(second.pool_) { }
+           pool_(second.pool_),
+           client_type_(second.client_type_) { }
 
      Result(const Result&) = delete;
      const Result& operator = (const Result&) = delete;
 
    private:
      friend class RedisClientPool;
-     Result(std::unique_ptr<RedisSyncClient> client, RedisClientPool* pool)
+     Result(
+         std::unique_ptr<RedisSyncClient> client,
+         RedisClientPool* pool,
+         RedisClientType client_type)
          : client_(std::move(client)),
-           pool_(pool) {
+           pool_(pool),
+           client_type_(client_type) {
      }
      std::unique_ptr<RedisSyncClient> client_;
      RedisClientPool* pool_;
+     const RedisClientType client_type_;
   };
 
-  RedisClientPool(const std::string& redis_ip, int redis_port);
+  RedisClientPool(
+      const std::string& redis_master_ip,
+      const std::string& redis_slave_ip,
+      int redis_port);
   ~RedisClientPool();
 
-  Result GetClient();
+  Result GetClient(RedisClientType redis_client_type);
 
  private:
-  void ReturnClient(std::unique_ptr<RedisSyncClient> client);
-  std::unique_ptr<RedisSyncClient> ConnectNewClient();
+  void ReturnClient(
+      std::unique_ptr<RedisSyncClient> client, RedisClientType client_type);
+  std::unique_ptr<RedisSyncClient> ConnectNewClient(
+      RedisClientType client_type);
 
   std::mutex instance_lock_;
-  std::vector<std::unique_ptr<RedisSyncClient>> free_clients_;
+  std::vector<std::unique_ptr<RedisSyncClient>> free_writable_clients_;
+  std::vector<std::unique_ptr<RedisSyncClient>> free_read_only_clients_;
 
-  const std::string redis_ip_;
+  const std::string redis_master_ip_;
+  const std::string redis_slave_ip_;
   const int redis_port_;
 };
 

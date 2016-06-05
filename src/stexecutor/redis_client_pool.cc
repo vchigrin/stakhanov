@@ -26,39 +26,57 @@ boost::asio::io_service& GetIOService() {
 
 }  // namespace
 
-RedisClientPool::RedisClientPool(const std::string& redis_ip, int redis_port)
-    : redis_ip_(redis_ip),
+RedisClientPool::RedisClientPool(
+    const std::string& redis_master_ip,
+    const std::string& redis_slave_ip,
+    int redis_port)
+    : redis_master_ip_(redis_master_ip),
+      redis_slave_ip_(redis_slave_ip),
       redis_port_(redis_port) {
 }
 
 RedisClientPool::~RedisClientPool() {
 }
 
-RedisClientPool::Result RedisClientPool::GetClient() {
+RedisClientPool::Result RedisClientPool::GetClient(
+    RedisClientType client_type) {
+  std::vector<std::unique_ptr<RedisSyncClient>>* free_clients =
+      client_type == RedisClientType::READ_WRITE ?
+          &free_writable_clients_ : &free_read_only_clients_;
   // Quick check - may be no need to lock mutex since no clients...
-  if (!free_clients_.empty()) {
+  if (!free_clients->empty()) {
     std::lock_guard<std::mutex> instance_lock(instance_lock_);
-    if (!free_clients_.empty()) {
+    if (!free_clients->empty()) {
       std::unique_ptr<RedisSyncClient> result(
-          free_clients_.rbegin()->release());
-      free_clients_.pop_back();
-      return Result(std::move(result), this);
+          free_clients->rbegin()->release());
+      free_clients->pop_back();
+      return Result(std::move(result), this, client_type);
     }
   }
-  return Result(ConnectNewClient(), this);
+  return Result(ConnectNewClient(client_type), this, client_type);
 }
 
-void RedisClientPool::ReturnClient(std::unique_ptr<RedisSyncClient> client) {
+void RedisClientPool::ReturnClient(
+    std::unique_ptr<RedisSyncClient> client, RedisClientType client_type) {
   std::lock_guard<std::mutex> instance_lock(instance_lock_);
-  free_clients_.push_back(std::move(client));
+  std::vector<std::unique_ptr<RedisSyncClient>>* free_clients =
+      client_type == RedisClientType::READ_WRITE ?
+          &free_writable_clients_ : &free_read_only_clients_;
+  free_clients->push_back(std::move(client));
 }
 
-std::unique_ptr<RedisSyncClient> RedisClientPool::ConnectNewClient() {
+std::unique_ptr<RedisSyncClient> RedisClientPool::ConnectNewClient(
+    RedisClientType client_type) {
   std::unique_ptr<RedisSyncClient> redis_client(
       new RedisSyncClient(GetIOService()));
 
-  boost::asio::ip::tcp::endpoint endpoint(
-      boost::asio::ip::address::from_string(redis_ip_), redis_port_);
+  boost::asio::ip::address server_ip;
+  if (client_type == RedisClientType::READ_WRITE)
+    server_ip = boost::asio::ip::address::from_string(redis_master_ip_);
+  else
+    server_ip = boost::asio::ip::address::from_string(redis_slave_ip_);
+
+  boost::asio::ip::tcp::endpoint endpoint(server_ip, redis_port_);
   std::string errmsg;
   if (!redis_client->connect(endpoint, errmsg)) {
     LOG4CPLUS_ERROR(

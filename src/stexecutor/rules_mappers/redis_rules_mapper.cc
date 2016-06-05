@@ -33,7 +33,7 @@ RedisRulesMapper::FindCachedResults(
     const BuildDirectoryState& build_dir_state,
     std::vector<FileInfo>* input_files) {
   RedisClientPool::Result redis_client_holder =
-     redis_client_pool_->GetClient();
+     redis_client_pool_->GetClient(RedisClientType::READ_ONLY);
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
   RedisRequestResults request_results(
@@ -49,7 +49,7 @@ void RedisRulesMapper::AddRule(
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
   RedisClientPool::Result redis_client_holder =
-     redis_client_pool_->GetClient();
+     redis_client_pool_->GetClient(RedisClientType::READ_WRITE);
   std::unique_ptr<RedisRequestResults> results(
       new RedisRequestResults(redis_client_holder.client(), request_hash));
   results->AddRule(input_files, std::move(response));

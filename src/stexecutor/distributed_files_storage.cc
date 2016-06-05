@@ -51,7 +51,7 @@ DistributedFilesStorage::DistributedFilesStorage(
 void DistributedFilesStorage::OnStorageIdFilled(
     const std::string& storage_id) {
   RedisClientPool::Result redis_client_holder =
-      redis_client_pool_->GetClient();
+      redis_client_pool_->GetClient(RedisClientType::READ_WRITE);
   redis_client_holder.client()->command(
       "RPUSH",
       StorageIdToRedisKey(storage_id),
@@ -98,7 +98,7 @@ bool DistributedFilesStorage::OnRequestedMissedStorageId(
 std::string DistributedFilesStorage::GetHostNameForStorageId(
     const std::string& storage_id) {
   RedisClientPool::Result redis_client_holder =
-      redis_client_pool_->GetClient();
+      redis_client_pool_->GetClient(RedisClientType::READ_ONLY);
   std::string redis_key = StorageIdToRedisKey(storage_id);
   RedisValue len_val = redis_client_holder.client()->command(
       "LLEN", redis_key);
