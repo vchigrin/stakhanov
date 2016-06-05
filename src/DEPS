@@ -5,7 +5,7 @@ vars = {
   # Crypto++ master, > 5.6.3. CMake build is not went to any release yet,
   # replace it once any stable release with CMake build appears.
   "cryptopp_revision": "a96d60e4e8d9646e099f2009f9a9a5df2d3c1803",
-  "redisclient_revision": "4c9d3fb52125b65bdc31ba1673cc563eb57f32a7",
+  "redisclient_revision": "02938e73c93e38239ccd3f443840c0cda256438e",
 }
 
 deps = {
@@ -18,7 +18,7 @@ deps = {
     "https://github.com/weidai11/cryptopp.git@" +
        Var("cryptopp_revision"),
   "src/third_party/redisclient":
-    "https://github.com/nekipelov/redisclient.git@" +
+    "https://github.com/nolleh/redisclient.git@" +
        Var("redisclient_revision"),
 }
 
