@@ -32,13 +32,13 @@ RedisRulesMapper::FindCachedResults(
     const ProcessCreationRequest& process_creation_request,
     const BuildDirectoryState& build_dir_state,
     std::vector<FileInfo>* input_files) {
-  std::unique_ptr<RedisSyncClient> redis_client(
-     redis_client_pool_->GetClient());
+  RedisClientPool::Result redis_client_holder =
+     redis_client_pool_->GetClient();
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
-  RedisRequestResults request_results(redis_client.get(), request_hash);
+  RedisRequestResults request_results(
+      redis_client_holder.client(), request_hash);
   auto result = request_results.FindCachedResults(build_dir_state, input_files);
-  redis_client_pool_->ReturnClient(std::move(redis_client));
   return result;
 }
 
@@ -48,12 +48,11 @@ void RedisRulesMapper::AddRule(
     std::unique_ptr<CachedExecutionResponse> response) {
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
-  std::unique_ptr<RedisSyncClient> redis_client =
-      redis_client_pool_->GetClient();
+  RedisClientPool::Result redis_client_holder =
+     redis_client_pool_->GetClient();
   std::unique_ptr<RedisRequestResults> results(
-      new RedisRequestResults(redis_client.get(), request_hash));
+      new RedisRequestResults(redis_client_holder.client(), request_hash));
   results->AddRule(input_files, std::move(response));
-  redis_client_pool_->ReturnClient(std::move(redis_client));
 }
 
 }  // namespace rules_mappers

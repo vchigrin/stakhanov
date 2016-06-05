@@ -34,7 +34,7 @@ RedisClientPool::RedisClientPool(const std::string& redis_ip, int redis_port)
 RedisClientPool::~RedisClientPool() {
 }
 
-std::unique_ptr<RedisSyncClient> RedisClientPool::GetClient() {
+RedisClientPool::Result RedisClientPool::GetClient() {
   // Quick check - may be no need to lock mutex since no clients...
   if (!free_clients_.empty()) {
     std::lock_guard<std::mutex> instance_lock(instance_lock_);
@@ -42,10 +42,10 @@ std::unique_ptr<RedisSyncClient> RedisClientPool::GetClient() {
       std::unique_ptr<RedisSyncClient> result(
           free_clients_.rbegin()->release());
       free_clients_.pop_back();
-      return result;
+      return Result(std::move(result), this);
     }
   }
-  return ConnectNewClient();
+  return Result(ConnectNewClient(), this);
 }
 
 void RedisClientPool::ReturnClient(std::unique_ptr<RedisSyncClient> client) {

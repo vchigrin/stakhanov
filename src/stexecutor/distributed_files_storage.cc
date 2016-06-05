@@ -50,13 +50,12 @@ DistributedFilesStorage::DistributedFilesStorage(
 
 void DistributedFilesStorage::OnStorageIdFilled(
     const std::string& storage_id) {
-  std::unique_ptr<RedisSyncClient> redis_client =
+  RedisClientPool::Result redis_client_holder =
       redis_client_pool_->GetClient();
-  redis_client->command(
+  redis_client_holder.client()->command(
       "RPUSH",
       StorageIdToRedisKey(storage_id),
       this_host_name_);
-  redis_client_pool_->ReturnClient(std::move(redis_client));
 }
 
 bool DistributedFilesStorage::OnRequestedMissedStorageId(
@@ -98,23 +97,22 @@ bool DistributedFilesStorage::OnRequestedMissedStorageId(
 
 std::string DistributedFilesStorage::GetHostNameForStorageId(
     const std::string& storage_id) {
-  std::unique_ptr<RedisSyncClient> redis_client =
+  RedisClientPool::Result redis_client_holder =
       redis_client_pool_->GetClient();
   std::string redis_key = StorageIdToRedisKey(storage_id);
-  RedisValue len_val = redis_client->command("LLEN", redis_key);
+  RedisValue len_val = redis_client_holder.client()->command(
+      "LLEN", redis_key);
   int list_len = len_val.toInt();
   if (list_len == 0) {
     LOG4CPLUS_INFO(logger_, "No hosts for storage id " << storage_id.c_str());
-    redis_client_pool_->ReturnClient(std::move(redis_client));
     return std::string();
   }
   // Use random host number as most primitive way of distributing load.
   int host_index = std::rand() % list_len;
   std::ostringstream host_index_buf;
   host_index_buf << host_index;
-  RedisValue host_val = redis_client->command(
+  RedisValue host_val = redis_client_holder.client()->command(
       "LINDEX", redis_key, host_index_buf.str());
-  redis_client_pool_->ReturnClient(std::move(redis_client));
   if (!host_val.isOk()) {
     LOG4CPLUS_INFO(
         logger_, "Failed get host name for storage id " << storage_id.c_str());
