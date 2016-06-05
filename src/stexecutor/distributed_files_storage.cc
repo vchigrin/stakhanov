@@ -109,16 +109,28 @@ std::string DistributedFilesStorage::GetHostNameForStorageId(
   }
   // Use random host number as most primitive way of distributing load.
   int host_index = std::rand() % list_len;
-  std::ostringstream host_index_buf;
-  host_index_buf << host_index;
-  RedisValue host_val = redis_client_holder.client()->command(
-      "LINDEX", redis_key, host_index_buf.str());
-  if (!host_val.isOk()) {
-    LOG4CPLUS_INFO(
-        logger_, "Failed get host name for storage id " << storage_id.c_str());
-    return std::string();
+  while (true) {
+    std::ostringstream host_index_buf;
+    host_index_buf << host_index;
+    RedisValue host_val = redis_client_holder.client()->command(
+        "LINDEX", redis_key, host_index_buf.str());
+    if (!host_val.isOk()) {
+      LOG4CPLUS_INFO(
+          logger_,
+          "Failed get host name for storage id " << storage_id.c_str());
+      return std::string();
+    }
+    std::string result = host_val.toString();
+    if (result != this_host_name_) {
+      return result;
+    } else {
+      // Seems local files storage is broken, querying this host is
+      // meaningless. So request another host, if exist.
+      if (list_len == 1)
+        return std::string();
+      host_index = (host_index + 1) % list_len;
+    }
   }
-  return host_val.toString();
 }
 
 bool DistributedFilesStorage::DownloadFile(
