@@ -1053,9 +1053,9 @@ void FlushUCRTIfPossible() {
     fclose_all();
 }
 
-void FlushMSVCRTIfPossible() {
+void FlushMSVCRTIfPossible(const wchar_t* module_name) {
   // HACK like one for ucrtbase.dll.
-  HMODULE msvcrt_dll = GetModuleHandleW(L"msvcrt.dll");
+  HMODULE msvcrt_dll = GetModuleHandleW(module_name);
   if (!msvcrt_dll)
     return;
   typedef int (*FLUSHALL_PTR)();
@@ -1067,7 +1067,8 @@ void FlushMSVCRTIfPossible() {
 
 void BeforeExitProcess(UINT exit_code) {
   FlushUCRTIfPossible();
-  FlushMSVCRTIfPossible();
+  FlushMSVCRTIfPossible(L"msvcrt.dll");
+  FlushMSVCRTIfPossible(L"msvcr90.dll");
   {
     std::lock_guard<std::mutex> lock(g_executor_call_mutex);
     if (g_should_buffer_std_streams) {
