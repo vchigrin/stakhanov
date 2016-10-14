@@ -5,6 +5,7 @@
 #ifndef STEXECUTOR_RULES_MAPPERS_FILE_INFO_H_
 #define STEXECUTOR_RULES_MAPPERS_FILE_INFO_H_
 
+#include <chrono>
 #include <string>
 
 #include "boost/filesystem.hpp"
@@ -15,25 +16,35 @@ namespace rules_mappers {
 // Represents unique state on one file in build dir.
 // That is, it relative path and hash of it content.
 struct FileInfo {
+  using TimePoint = std::chrono::steady_clock::time_point;
   FileInfo(const boost::filesystem::path& rel_file_path,
-           const std::string& storage_content_id)
+           const std::string& storage_content_id,
+           const TimePoint& construction_time)
       : rel_file_path(rel_file_path),
-        storage_content_id(storage_content_id) {}
+        storage_content_id(storage_content_id),
+        construction_time(construction_time) {}
 
   FileInfo() {}
 
   bool operator == (const FileInfo& second) const {
     return rel_file_path == second.rel_file_path &&
-        storage_content_id == second.storage_content_id;
+        storage_content_id == second.storage_content_id &&
+        construction_time == second.construction_time;
   }
 
   bool operator < (const FileInfo& second) const {
     auto cmp_result = rel_file_path.compare(second.rel_file_path);
-    if (cmp_result == 0) {
-      // Path are equal - compare storage ids.
-      return storage_content_id < second.storage_content_id;
-    }
-    return cmp_result < 0;
+    if (cmp_result < 0)
+      return true;
+    if (cmp_result > 0)
+      return false;
+    // Path are equal - compare storage ids.
+    cmp_result = storage_content_id.compare(second.storage_content_id);
+    if (cmp_result < 0)
+      return true;
+    if (cmp_result > 0)
+      return false;
+    return construction_time < second.construction_time;
   }
 
   template<typename Archive>
@@ -44,18 +55,30 @@ struct FileInfo {
         "rel_file_path", rel_file_path);
     ar & boost::serialization::make_nvp(
         "storage_content_id", storage_content_id);
+    // NOTE: construction_time intentionally not serialized.
+    // There is no point in wasting precise memory in Redis for it.
   }
 
   boost::filesystem::path rel_file_path;
   std::string storage_content_id;
+  // Preserve time of file construction to properly determine
+  // result outputs in case when parent command overwrites some of child
+  // command outputs. We can not just rely on the fact that parent
+  // command info is filled after children. Due to race conditions in
+  // executor process child command info may be added after parent command
+  // info applied.
+  TimePoint construction_time;
 };
 
 struct FileInfoHasher {
   size_t operator()(const FileInfo& val) const {
-    std::hash<std::string> hasher;
-    size_t path_hash = hasher(val.rel_file_path.generic_string());
-    size_t content_hash = hasher(val.storage_content_id);
-    return path_hash ^ content_hash;
+    std::hash<std::string> string_hasher;
+    std::hash<std::chrono::steady_clock::duration::rep> time_hasher;
+    size_t path_hash = string_hasher(val.rel_file_path.generic_string());
+    size_t content_hash = string_hasher(val.storage_content_id);
+    size_t time_hash = time_hasher(
+        val.construction_time.time_since_epoch().count());
+    return path_hash ^ content_hash ^ time_hash;
   }
 };
 

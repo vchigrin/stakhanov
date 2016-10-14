@@ -105,6 +105,21 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
         execution_response->stderr_content_id,
         &stderr_content);
   }
+  if (success && parent_builder) {
+    // Update construction time for all items to ensure logic related to
+    // old file info overwriting in CumulativeExecutionResponseBuilder remains
+    // correct.
+    const auto now = std::chrono::steady_clock::now();
+    // TODO(vchigrin): Refactor:
+    std::shared_ptr<rules_mappers::CachedExecutionResponse> new_response =
+        std::make_shared<rules_mappers::CachedExecutionResponse>(
+            *execution_response);
+    for (rules_mappers::FileInfo& file_info : new_response->output_files)
+      file_info.construction_time = now;
+    for (auto& file_info : input_files)
+      file_info.construction_time = now;
+    execution_response = new_response;
+  }
 
   {
     std::lock_guard<std::mutex> instance_lock(instance_lock_);

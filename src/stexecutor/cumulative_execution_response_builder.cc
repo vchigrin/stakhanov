@@ -140,7 +140,11 @@ void CumulativeExecutionResponseBuilder::AddFileSets(
     // E.g. cumulative command for protoc_wrapper.py from Chromium build
     // will have save output paths for resulting .h file, but with different
     // content IDs (since python script overwrites protoc.exe output).
-    output_files_[file_info.rel_file_path] = file_info;
+    auto it = output_files_.find(file_info.rel_file_path);
+    if (it == output_files_.end() ||
+        it->second.construction_time < file_info.construction_time) {
+      output_files_[file_info.rel_file_path] = file_info;
+    }
   }
   removed_rel_paths_.insert(
       execution_response.removed_rel_paths.begin(),

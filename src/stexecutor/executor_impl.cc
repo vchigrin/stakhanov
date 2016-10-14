@@ -108,7 +108,8 @@ bool ExecutorImpl::HookedCreateFile(
       return true;
     }
     input_files_.insert(std::make_pair(rel_path,
-        rules_mappers::FileInfo(rel_path, content_id)));
+        rules_mappers::FileInfo(
+            rel_path, content_id, std::chrono::steady_clock::now())));
   }
   return true;
 }
@@ -141,7 +142,8 @@ void ExecutorImpl::HookedRenameFile(
             rel_new_path);
         input_files_.insert(std::make_pair(
             rel_old_path,
-            rules_mappers::FileInfo(rel_old_path, content_id)));
+            rules_mappers::FileInfo(
+                rel_old_path, content_id, std::chrono::steady_clock::now())));
       }
     }
   }
@@ -246,6 +248,7 @@ void ExecutorImpl::FillFileInfos() {
   files_infos_filled_ = true;
   BuildDirectoryState* build_dir_state = executing_engine_->build_dir_state();
   FilesStorage* files_storage = executing_engine_->files_storage();
+  std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
   for (const boost::filesystem::path& output_path : output_files_) {
     if (removed_files_.count(output_path) > 0) {
       // Do not take into account temporary files.
@@ -267,7 +270,7 @@ void ExecutorImpl::FillFileInfos() {
       return;
     }
     command_info_.output_files.push_back(
-        rules_mappers::FileInfo(rel_path, storage_id));
+        rules_mappers::FileInfo(rel_path, storage_id, now));
   }
   command_info_.input_files.reserve(input_files_.size());
   std::transform(
