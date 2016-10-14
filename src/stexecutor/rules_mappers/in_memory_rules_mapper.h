@@ -23,7 +23,7 @@ class InMemoryRulesMapper : public RulesMapperBase {
   InMemoryRulesMapper();
   ~InMemoryRulesMapper();
 
-  std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
+  std::unique_ptr<CachedExecutionResponse> FindCachedResults(
       const ProcessCreationRequest& process_creation_request,
       const BuildDirectoryState& build_dir_state,
       std::vector<FileInfo>* input_files) override;

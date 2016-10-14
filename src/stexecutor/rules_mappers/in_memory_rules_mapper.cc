@@ -29,7 +29,7 @@ InMemoryRulesMapper::InMemoryRulesMapper() {
 InMemoryRulesMapper::~InMemoryRulesMapper() {
 }
 
-std::shared_ptr<const CachedExecutionResponse>
+std::unique_ptr<CachedExecutionResponse>
 InMemoryRulesMapper::FindCachedResults(
     const ProcessCreationRequest& process_creation_request,
     const BuildDirectoryState& build_dir_state,

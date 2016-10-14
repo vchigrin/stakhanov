@@ -32,13 +32,13 @@ class RedisRequestResults : public RequestResultsBase {
   void AddRule(
       const std::vector<FileInfo>& input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
-  std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
+  std::unique_ptr<CachedExecutionResponse> FindCachedResults(
       const BuildDirectoryState& build_dir_state,
       std::vector<FileInfo>* input_files) override;
 
  private:
   bool LoadFileSet(const std::string& file_set_hash, FileSet* file_set);
-  std::shared_ptr<CachedExecutionResponse> LoadExecutionResponse(
+  std::unique_ptr<CachedExecutionResponse> LoadExecutionResponse(
       const std::string& key);
   void SaveFileSet(const std::string& key, const FileSet& file_set);
   void SaveExecutionResponse(

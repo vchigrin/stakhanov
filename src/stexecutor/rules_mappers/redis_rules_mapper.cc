@@ -27,7 +27,7 @@ RedisRulesMapper::RedisRulesMapper(
 
 RedisRulesMapper::~RedisRulesMapper() { }
 
-std::shared_ptr<const CachedExecutionResponse>
+std::unique_ptr<CachedExecutionResponse>
 RedisRulesMapper::FindCachedResults(
     const ProcessCreationRequest& process_creation_request,
     const BuildDirectoryState& build_dir_state,

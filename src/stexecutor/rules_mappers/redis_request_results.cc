@@ -120,7 +120,7 @@ void RedisRequestResults::AddRule(
       input_files_hash_string);
 }
 
-std::shared_ptr<const CachedExecutionResponse>
+std::unique_ptr<CachedExecutionResponse>
 RedisRequestResults::FindCachedResults(
     const BuildDirectoryState& build_dir_state,
     std::vector<FileInfo>* input_files) {
@@ -132,7 +132,7 @@ RedisRequestResults::FindCachedResults(
       std::string key = RequestAndFileSetHashToKey(
           request_hash_,
           HashFileSet(file_set));
-      std::shared_ptr<CachedExecutionResponse> result = LoadExecutionResponse(
+      std::unique_ptr<CachedExecutionResponse> result = LoadExecutionResponse(
           key);
       if (!result)
         return nullptr;
@@ -159,13 +159,13 @@ bool RedisRequestResults::LoadFileSet(
   return true;
 }
 
-std::shared_ptr<CachedExecutionResponse>
+std::unique_ptr<CachedExecutionResponse>
 RedisRequestResults::LoadExecutionResponse(const std::string& key) {
   RedisValue response_val = redis_client_->command("GET", key);
   if (!response_val.isOk())
     return nullptr;
-  std::shared_ptr<CachedExecutionResponse> result =
-      std::make_shared<CachedExecutionResponse>();
+  std::unique_ptr<CachedExecutionResponse> result(
+      new CachedExecutionResponse());
   if (!LoadObject(response_val, result.get())) {
     LOG4CPLUS_ERROR(
         logger_,

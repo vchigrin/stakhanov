@@ -26,7 +26,7 @@ class InMemoryRequestResults : public RequestResultsBase {
   void AddRule(
       const std::vector<FileInfo>& input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
-  std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
+  std::unique_ptr<CachedExecutionResponse> FindCachedResults(
       const BuildDirectoryState& build_dir_state,
       std::vector<FileInfo>* input_files) override;
 

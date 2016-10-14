@@ -20,7 +20,7 @@ struct CachedExecutionResponse;
 class RulesMapper {
  public:
   virtual ~RulesMapper() {}
-  virtual std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
+  virtual std::unique_ptr<CachedExecutionResponse> FindCachedResults(
       const ProcessCreationRequest& process_creation_request,
       const BuildDirectoryState& build_dir_state,
       std::vector<FileInfo>* input_files) = 0;

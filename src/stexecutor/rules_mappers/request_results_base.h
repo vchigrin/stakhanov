@@ -22,7 +22,7 @@ class RequestResultsBase {
   virtual void AddRule(
       const std::vector<FileInfo>& input_files,
       std::unique_ptr<CachedExecutionResponse> response) = 0;
-  virtual std::shared_ptr<const CachedExecutionResponse> FindCachedResults(
+  virtual std::unique_ptr<CachedExecutionResponse> FindCachedResults(
       const BuildDirectoryState& build_dir_state,
       std::vector<FileInfo>* input_files) = 0;
 

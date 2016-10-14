@@ -42,7 +42,7 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
     int parent_command_id,
     const ProcessCreationRequest& process_creation_request) {
   std::vector<rules_mappers::FileInfo> input_files;
-  std::shared_ptr<const rules_mappers::CachedExecutionResponse>
+  std::unique_ptr<rules_mappers::CachedExecutionResponse>
        execution_response = rules_mapper_->FindCachedResults(
             process_creation_request, *build_dir_state_, &input_files);
 
@@ -110,15 +110,10 @@ ProcessCreationResponse ExecutingEngine::AttemptCacheExecute(
     // old file info overwriting in CumulativeExecutionResponseBuilder remains
     // correct.
     const auto now = std::chrono::steady_clock::now();
-    // TODO(vchigrin): Refactor:
-    std::shared_ptr<rules_mappers::CachedExecutionResponse> new_response =
-        std::make_shared<rules_mappers::CachedExecutionResponse>(
-            *execution_response);
-    for (rules_mappers::FileInfo& file_info : new_response->output_files)
+    for (rules_mappers::FileInfo& file_info : execution_response->output_files)
       file_info.construction_time = now;
     for (auto& file_info : input_files)
       file_info.construction_time = now;
-    execution_response = new_response;
   }
 
   {
