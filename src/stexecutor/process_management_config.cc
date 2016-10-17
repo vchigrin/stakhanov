@@ -40,10 +40,15 @@ bool ProcessManagementConfig::ShouldStickToParent(
   // is not same as parent.
   if (request.GetHash() == parent_request.GetHash())
     return true;
-  // TODO(vchigrin): Allow JSON config add riles based on exe path.
+  // TODO(vchigrin): Allow JSON config add rules based on exe path.
   auto file_name = request.exe_path().filename();
   if (file_name == L"cc1plus.exe" ||
-      file_name == "cc1.exe" || file_name == "collect2.exe") {
+      file_name == "cc1.exe" ||
+      file_name == "collect2.exe" ||
+      // Can not use "stick to parent" rules for parent protoc.exe,
+      // since we must stick exactly these command invokations.
+      file_name == "json_values_converter.bat" ||
+      file_name == "proto_zero_plugin.exe") {
     return true;
   }
   return MatchesAnyPattern(request, stick_to_parent_patterns_);
