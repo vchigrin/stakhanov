@@ -262,13 +262,20 @@ int main(int argc, char* argv[]) {
   boost::property_tree::ptree config = LoadConfig(variables);
   boost::property_tree::ptree redis_node = config.get_child("redis");
 
-  std::string redis_master_ip = redis_node.get<std::string>("master_ip");
+  std::string redis_sentinel_ip = redis_node.get<std::string>("sentinel_ip");
   std::string redis_slave_ip = redis_node.get<std::string>("slave_ip");
-  int redis_port = redis_node.get<int>("port");
+  int redis_sentinel_port = redis_node.get<int>("sentinel_port");
+  int redis_slave_port = redis_node.get<int>("slave_port");
+  std::string sentinel_master_name = redis_node.get<std::string>(
+      "sentinel_master_name");
 
   std::shared_ptr<RedisClientPool> redis_client_pool =
       std::make_shared<RedisClientPool>(
-          redis_master_ip, redis_slave_ip, redis_port);
+          redis_sentinel_ip,
+          redis_sentinel_port,
+          redis_slave_ip,
+          redis_slave_port,
+          sentinel_master_name);
 
   std::unique_ptr<FilesStorage> file_storage(
       new DistributedFilesStorage(config, redis_client_pool));
