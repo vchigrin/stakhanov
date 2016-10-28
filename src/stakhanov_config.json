@@ -18,6 +18,9 @@
       },
       {
         "command_line_patterns": [ "^.*-nacl-as.exe$" ]
+      },
+      {
+        "command_line_patterns": [ "^.*json_values_converter\\..*$" ]
       }
     ],
     "do_not_track": [
@@ -71,8 +74,10 @@
     "safe_to_drop_input_extensions": [".pyc", ".pyo"]
   },
   "redis": {
-    "master_ip": "127.0.0.1",
+    "sentinel_ip": "127.0.0.1",
+    "sentinel_port": 26379,
     "slave_ip": "127.0.0.1",
-    "port": 6379
+    "slave_port": 6379,
+    "sentinel_master_name": "st_master"
   }
 }
