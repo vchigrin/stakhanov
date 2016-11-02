@@ -38,9 +38,11 @@ class RedisRequestResults : public RequestResultsBase {
 
  private:
   bool LoadFileSet(const std::string& file_set_hash, FileSet* file_set);
+  bool LoadFileInfo(const std::string& file_info_hash, FileInfo* file_info);
   std::unique_ptr<CachedExecutionResponse> LoadExecutionResponse(
       const std::string& key);
   void SaveFileSet(const std::string& key, const FileSet& file_set);
+  void SaveFileInfo(const std::string& key, const FileInfo& file_info);
   void SaveExecutionResponse(
       const std::string& key, const CachedExecutionResponse& response);
 
