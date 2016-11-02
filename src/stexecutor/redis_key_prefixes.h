@@ -11,6 +11,10 @@ extern const char kFileSets[];
 extern const char kFileInfos[];
 extern const char kResponse[];
 extern const char kStoredFileHosts[];
+// Contains time since epoch, in seconds, when this key was accessed last time.
+// Need for proper cleanup.
+// At present timestamp saved only for kRules and kFileSets key types.
+extern const char kKeyTimeStamp[];
 }
 
 #endif  // STEXECUTOR_REDIS_KEY_PREFIXES_H_
