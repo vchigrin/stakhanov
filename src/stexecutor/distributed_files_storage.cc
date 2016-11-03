@@ -12,8 +12,8 @@
 #include "boost/property_tree/ptree.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
-#include "stexecutor/redis_client_pool.h"
-#include "stexecutor/redis_key_prefixes.h"
+#include "base/redis_client_pool.h"
+#include "base/redis_key_prefixes.h"
 #include "third_party/redisclient/src/redisclient/redissyncclient.h"
 
 namespace {

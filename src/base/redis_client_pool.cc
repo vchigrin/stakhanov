@@ -2,7 +2,7 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#include "stexecutor/redis_client_pool.h"
+#include "base/redis_client_pool.h"
 
 #include <future>
 
@@ -42,6 +42,7 @@ RedisClientPool::RedisClientPool(
 RedisClientPool::~RedisClientPool() {
   if (sentinel_client_ && !sentinel_subscription_handle_.channel.empty())
     sentinel_client_->unsubscribe(sentinel_subscription_handle_);
+  sentinel_client_.reset(nullptr);
   io_service_->stop();
   io_service_thread_.join();
 }

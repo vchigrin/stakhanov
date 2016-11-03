@@ -2,8 +2,8 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#ifndef STEXECUTOR_REDIS_CLIENT_POOL_H_
-#define STEXECUTOR_REDIS_CLIENT_POOL_H_
+#ifndef BASE_REDIS_CLIENT_POOL_H_
+#define BASE_REDIS_CLIENT_POOL_H_
 
 #include <memory>
 #include <mutex>
@@ -105,4 +105,4 @@ class RedisClientPool {
   const std::string sentinel_master_name_;
 };
 
-#endif  // STEXECUTOR_REDIS_CLIENT_POOL_H_
+#endif  // BASE_REDIS_CLIENT_POOL_H_

@@ -2,10 +2,11 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#ifndef STEXECUTOR_REDIS_KEY_PREFIXES_H_
-#define STEXECUTOR_REDIS_KEY_PREFIXES_H_
+#ifndef BASE_REDIS_KEY_PREFIXES_H_
+#define BASE_REDIS_KEY_PREFIXES_H_
 
 namespace redis_key_prefixes {
+
 extern const char kRules[];
 extern const char kFileSets[];
 extern const char kFileInfos[];
@@ -15,6 +16,7 @@ extern const char kStoredFileHosts[];
 // Need for proper cleanup.
 // At present timestamp saved only for kRules and kFileSets key types.
 extern const char kKeyTimeStamp[];
-}
 
-#endif  // STEXECUTOR_REDIS_KEY_PREFIXES_H_
+}  // namespace redis_key_prefixes
+
+#endif  // BASE_REDIS_KEY_PREFIXES_H_

@@ -9,6 +9,12 @@ add_library(base STATIC
   filesystem_utils_win.h
   init_logging.cc
   init_logging.h
+  interface.cc
+  interface.h
+  redis_client_pool.cc
+  redis_client_pool.h
+  redis_key_prefixes.cc
+  redis_key_prefixes.h
   sthook_constants.cc
   sthook_constants.h
   string_utils.cc

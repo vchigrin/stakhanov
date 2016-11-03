@@ -110,6 +110,7 @@ endif()
 set(CMAKE_DEBUG_POSTFIX "")
 
 add_subdirectory(base)
+add_subdirectory(stclean)
 add_subdirectory(stlaunch)
 add_subdirectory(sthook)
 add_subdirectory(stexecutor)

@@ -6,9 +6,9 @@
 
 #include <sstream>
 
+#include "base/redis_key_prefixes.h"
 #include "boost/archive/binary_iarchive.hpp"
 #include "boost/archive/binary_oarchive.hpp"
-#include "stexecutor/redis_key_prefixes.h"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/file_info.h"
 #include "stexecutor/rules_mappers/file_set.h"
