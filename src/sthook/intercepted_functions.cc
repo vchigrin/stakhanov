@@ -226,7 +226,14 @@ NTSTATUS NTAPI NewNtCreateFile(
      return result;
   if (create_options & FILE_DELETE_ON_CLOSE)
      return result;  // Do not process temporary files.
-  const bool for_writing = (desired_access & GENERIC_WRITE) != 0;
+  const bool for_writing = (desired_access & GENERIC_WRITE) != 0 ||
+  // GetTempFileName creates new file opening it with GENERIC_READ access.
+  // We must treat such openings as "for wriring", since in case such opening
+  // succeed that means that any previous content of the file is lost and
+  // it can not be "input" of the command.
+      (create_disposition == FILE_OVERWRITE) ||
+      (create_disposition == FILE_OVERWRITE_IF) ||
+      (create_disposition == FILE_CREATE);
   if (for_writing && g_should_ignore_output_files)
     return result;
   if (object_attributes && object_attributes->ObjectName) {
