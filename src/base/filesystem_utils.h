@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <cassert>
 #include <string>
 #include <vector>
 
@@ -59,18 +60,31 @@ std::basic_string<CHAR_TYPE> ToLongPathName(
     // TODO(vchigrin): Is it 100% correct?
     return src;
   }
-  std::vector<CHAR_TYPE> buffer(src.length() + 1);
+
+  // Allocate buffer with additional space for NUL character.
+  std::basic_string<CHAR_TYPE> buffer(src.length() + 1, '\0');
   while (true) {
     DWORD api_result = LongPathNameHelpers<CHAR_TYPE>::GetLongPathNameImpl(
         src.c_str(), &buffer[0], static_cast<DWORD>(buffer.size()));
-    if (api_result > buffer.size()) {
-      buffer.resize(api_result);
-    }
     if (api_result == 0) {
       return src;  // Failure for any reason - go with original path name.
     }
-    return std::basic_string<CHAR_TYPE>(&buffer[0]);
+
+    if (api_result > buffer.size()) {
+      // Expand the buffer and try again.
+      // |api_result| will contain required size of the buffer
+      // with a NUL character.
+      buffer.resize(api_result);
+      continue;
+    }
+
+    // Resize the buffer to sync std::string::size() with |api_result| value.
+    buffer.resize(api_result);
+    return buffer;
   }
+
+  assert(!"Should not reach this line.");
+  return src;
 }
 
 struct FilePathHash {
