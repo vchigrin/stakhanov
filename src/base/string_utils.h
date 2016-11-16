@@ -33,12 +33,6 @@ std::string ASCIIToLower(const std::string& src);
 std::wstring WideToLower(const std::wstring& src);
 
 std::string BytesToHexString(const std::vector<uint8_t>& bytes);
-
-template<typename CHAR_TYPE>
-inline size_t StringCharLen(const CHAR_TYPE* str) {
-  return std::char_traits<CHAR_TYPE>::length(str);
-}
-
 }  // namespace base
 
 #endif  // BASE_STRING_UTILS_H_

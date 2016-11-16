@@ -351,7 +351,7 @@ template<typename CHAR_TYPE>
 size_t EnvBlockCharLength(const CHAR_TYPE* env_block) {
   const CHAR_TYPE* p = env_block;
   while (*p) {
-    p += (base::StringCharLen(p) + 1);
+    p += (std::char_traits<CHAR_TYPE>::length(p) + 1);
   }
   return p - env_block;
 }
@@ -642,7 +642,7 @@ class CreateProcessInvoker {
   static std::unique_ptr<WCHAR[]> CopyStringIfNeed(const WCHAR* str) {
     if (!str)
       return nullptr;
-    size_t len = base::StringCharLen(str);
+    size_t len = std::char_traits<WCHAR>::length(str);
     ++len;  // For zero terminator.
     std::unique_ptr<WCHAR[]> result(new WCHAR[len]);
     memcpy(result.get(), str, len * sizeof(WCHAR));
