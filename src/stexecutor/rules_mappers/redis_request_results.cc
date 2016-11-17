@@ -4,11 +4,10 @@
 
 #include "stexecutor/rules_mappers/redis_request_results.h"
 
-#include <sstream>
-
 #include "base/redis_key_prefixes.h"
 #include "boost/archive/binary_iarchive.hpp"
 #include "boost/archive/binary_oarchive.hpp"
+#include "boost/lexical_cast.hpp"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/file_info.h"
 #include "stexecutor/rules_mappers/file_set.h"
@@ -136,6 +135,7 @@ void RedisRequestResults::AddRule(
   std::string input_files_hash_string = HashValueToString(input_files_hash);
   const std::string file_set_key = FileSetHashToKey(input_files_hash_string);
   SaveFileSet(file_set_key, file_set);
+  MarkKeyAccessed(file_set_key);
   const std::string execution_response_key = RequestAndFileSetHashToKey(
       request_hash_,
       input_files_hash);
@@ -275,10 +275,10 @@ void RedisRequestResults::SaveExecutionResponse(
 void RedisRequestResults::MarkKeyAccessed(const std::string& key) {
   const auto now = std::chrono::system_clock::to_time_t(
       std::chrono::system_clock::now());
-  std::stringstream strm;
-  strm << now;
   redis_client_->command(
-      "SET", redis_key_prefixes::kKeyTimeStamp + key, strm.str());
+      "SET",
+      redis_key_prefixes::kKeyTimeStamp + key,
+      boost::lexical_cast<std::string>(now));
 }
 
 }  // namespace rules_mappers
