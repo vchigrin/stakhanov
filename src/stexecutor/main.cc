@@ -209,7 +209,7 @@ int main(int argc, const char* argv[]) {
   desc.add(general_desc).add(in_memory_desc);
 
   boost::program_options::variables_map variables;
-  if (!interface::ProcessOptions(desc, argc, argv, &variables))
+  if (!interface::ProcessOptions(desc, argc, argv, &variables, std::string()))
     return 1;
 
   boost::filesystem::path build_dir_path =

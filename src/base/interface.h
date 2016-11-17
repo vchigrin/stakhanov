@@ -6,6 +6,7 @@
 #define BASE_INTERFACE_H_
 
 #include <memory>
+#include <string>
 
 #include "boost/filesystem.hpp"
 #include "boost/program_options.hpp"
@@ -20,7 +21,8 @@ boost::property_tree::ptree LoadConfig(const boost::filesystem::path& path);
 bool ProcessOptions(
     const boost::program_options::options_description& desc,
     int argc, const char* argv[],
-    boost::program_options::variables_map* variables);
+    boost::program_options::variables_map* variables,
+    const std::string& help_message);
 
 std::shared_ptr<RedisClientPool> BuildRedisClientPoolFromConfig(
     const boost::property_tree::ptree& config);

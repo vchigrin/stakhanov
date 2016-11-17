@@ -334,6 +334,10 @@ void CleanRedisToSize(
             << " bytes" << std::endl;
 }
 
+void CleanFileStorageFromOrphanedEntries(RedisSyncClient* redis_client) {
+  // TODO(vchigrin):
+}
+
 }  // namespace
 
 int main(int argc, const char* argv[]) {
@@ -341,18 +345,44 @@ int main(int argc, const char* argv[]) {
   boost::program_options::options_description desc;
   desc.add_options()
       ("help", "Print help message")
+      ("mode",
+       boost::program_options::value<std::string>()->required(),
+      "Mode of operation. Either clean-redis or clean-files-storage")
       ("config_file",
        boost::program_options::value<boost::filesystem::path>()->required(),
-        "Path to config JSON file with additional options")
-      ("target_number_of_bytes",
-       boost::program_options::value<int64_t>()->required(),
+        "Path to config JSON file with additional options");
+
+  boost::program_options::options_description redis_options(
+      "Options for clean-redis mode");
+  redis_options.add_options()
+      ("target_redis_number_of_bytes",
+       boost::program_options::value<int64_t>(),
        "Cleanup will proceed until memory consumption of redis master will "
        "not drop below or equal to that number of bytes. \n"
        "Determined by 'used_memory' field in Redis 'INFO' command");
 
+  desc.add(redis_options);
+
   boost::program_options::variables_map variables;
-  if (!interface::ProcessOptions(desc, argc, argv, &variables))
+  static const char* kHelp =
+      "clean-redis mode removes old entries from redis DB.\n"
+      "Please, ensure there are no any build running on that Redis DB \n"
+      "while cleanup in progress.\n\n"
+      "clean-files-storage mode removes entries from files storage\n"
+      "that are no more referred by any key in Redis DB. It can be performed\n"
+      "in parallel with building on OTHER machines connected to the same"
+      "Redis DB\n";
+  if (!interface::ProcessOptions(desc, argc, argv, &variables, kHelp))
     return 1;
+  const std::string mode = variables["mode"].as<std::string>();
+  const bool clean_redis = (mode == "clean-redis");
+  const bool clean_files_storage = (mode == "clean-files-storage");
+  if (!clean_redis && !clean_files_storage) {
+    std::cerr
+        << "Mode must be either clean-redis or clean-files-storage"
+        << std::endl;
+    return 1;
+  }
   boost::property_tree::ptree config = interface::LoadConfig(
       variables["config_file"].as<boost::filesystem::path>());
   std::shared_ptr<RedisClientPool> redis_client_pool =
@@ -361,10 +391,24 @@ int main(int argc, const char* argv[]) {
     std::cerr << "Failed connect to Redis instance" << std::endl;
     return 1;
   }
-  int64_t target_number_of_bytes =
-      variables["target_number_of_bytes"].as<int64_t>();
-  auto redis_result = redis_client_pool->GetClient(
-      RedisClientType::READ_WRITE);
-  CleanRedisToSize(redis_result.client(), target_number_of_bytes);
+  if (clean_redis) {
+    int64_t target_number_of_bytes = 0;
+    try {
+      target_number_of_bytes =
+          variables["target_redis_number_of_bytes"].as<int64_t>();
+    } catch (const std::exception& ex) {
+      std::cerr
+          << "clean-redis mode requires integer target_redis_number_of_bytes"
+          << std::endl;
+      return 1;
+    }
+    auto redis_result = redis_client_pool->GetClient(
+        RedisClientType::READ_WRITE);
+    CleanRedisToSize(redis_result.client(), target_number_of_bytes);
+  } else if (clean_files_storage) {
+    auto redis_result = redis_client_pool->GetClient(
+        RedisClientType::READ_ONLY);
+    CleanFileStorageFromOrphanedEntries(redis_result.client());
+  }
   return 0;
 }

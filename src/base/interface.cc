@@ -22,7 +22,8 @@ boost::property_tree::ptree LoadConfig(const boost::filesystem::path& path) {
 bool ProcessOptions(
     const boost::program_options::options_description& desc,
     int argc, const char* argv[],
-    boost::program_options::variables_map* variables) {
+    boost::program_options::variables_map* variables,
+    const std::string& help_message) {
   try {
     boost::program_options::store(
         boost::program_options::parse_command_line(argc, argv, desc),
@@ -32,6 +33,8 @@ bool ProcessOptions(
     return false;
   }
   if (variables->count("help")) {
+    if (!help_message.empty())
+      std::cout << help_message << std::endl;
     std::cout << desc;
     return false;
   }
