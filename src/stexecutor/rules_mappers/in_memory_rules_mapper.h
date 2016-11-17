@@ -29,7 +29,7 @@ class InMemoryRulesMapper : public RulesMapperBase {
       std::vector<FileInfo>* input_files) override;
   void AddRule(
       const ProcessCreationRequest& process_creation_request,
-      const std::vector<FileInfo>& input_files,
+      std::vector<FileInfo>&& input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
   void set_dbg_dump_rules_dir(
       const boost::filesystem::path& dbg_dump_rules_dir) {

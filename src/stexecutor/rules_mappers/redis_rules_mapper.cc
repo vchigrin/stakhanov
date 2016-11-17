@@ -44,7 +44,7 @@ RedisRulesMapper::FindCachedResults(
 
 void RedisRulesMapper::AddRule(
     const ProcessCreationRequest& process_creation_request,
-    const std::vector<FileInfo>& input_files,
+    std::vector<FileInfo>&& input_files,
     std::unique_ptr<CachedExecutionResponse> response) {
   HashValue request_hash = ComputeProcessCreationHash(
       process_creation_request);
@@ -52,7 +52,7 @@ void RedisRulesMapper::AddRule(
      redis_client_pool_->GetClient(RedisClientType::READ_WRITE);
   std::unique_ptr<RedisRequestResults> results(
       new RedisRequestResults(redis_client_holder.client(), request_hash));
-  results->AddRule(input_files, std::move(response));
+  results->AddRule(std::move(input_files), std::move(response));
 }
 
 }  // namespace rules_mappers

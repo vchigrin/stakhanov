@@ -48,7 +48,7 @@ InMemoryRulesMapper::FindCachedResults(
 
 void InMemoryRulesMapper::AddRule(
     const ProcessCreationRequest& process_creation_request,
-    const std::vector<FileInfo>& input_files,
+    std::vector<FileInfo>&& input_files,
     std::unique_ptr<CachedExecutionResponse> response) {
   std::lock_guard<std::mutex> instance_lock(instance_lock_);
   HashValue request_hash = ComputeProcessCreationHash(
@@ -67,7 +67,7 @@ void InMemoryRulesMapper::AddRule(
     results = new_results.get();
     rules_.insert(std::make_pair(request_hash, std::move(new_results)));
   }
-  results->AddRule(input_files, std::move(response));
+  results->AddRule(std::move(input_files), std::move(response));
   if (!dbg_dump_rules_dir_.empty()) {
     DumpRequestResults(results, process_creation_request, request_hash);
   }

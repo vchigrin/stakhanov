@@ -22,10 +22,10 @@ log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
 }  // namespace
 
 void InMemoryRequestResults::AddRule(
-    const std::vector<FileInfo>& input_files,
+    std::vector<FileInfo>&& input_files,
     std::unique_ptr<CachedExecutionResponse> response) {
-  FileSet file_set(input_files);
-  responses_[file_set] = std::move(response);
+  FileSet file_set(std::move(input_files));
+  responses_.emplace(std::move(file_set), std::move(response));
 }
 
 std::unique_ptr<CachedExecutionResponse>
@@ -37,8 +37,7 @@ InMemoryRequestResults::FindCachedResults(
         file_set_and_response.first,
         build_dir_state)) {
       *input_files = file_set_and_response.first.file_infos();
-      return std::unique_ptr<CachedExecutionResponse>(
-          new CachedExecutionResponse(*file_set_and_response.second));
+      return std::make_unique<CachedExecutionResponse>(*file_set_and_response.second);
     }
   }
   input_files->clear();

@@ -20,7 +20,7 @@ class RequestResultsBase {
  public:
   virtual ~RequestResultsBase();
   virtual void AddRule(
-      const std::vector<FileInfo>& input_files,
+      std::vector<FileInfo>&& input_files,
       std::unique_ptr<CachedExecutionResponse> response) = 0;
   virtual std::unique_ptr<CachedExecutionResponse> FindCachedResults(
       const BuildDirectoryState& build_dir_state,

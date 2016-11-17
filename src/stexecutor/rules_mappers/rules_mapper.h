@@ -26,7 +26,7 @@ class RulesMapper {
       std::vector<FileInfo>* input_files) = 0;
   virtual void AddRule(
       const ProcessCreationRequest& process_creation_request,
-      const std::vector<FileInfo>& input_files,
+      std::vector<FileInfo>&& input_files,
       std::unique_ptr<CachedExecutionResponse> response) = 0;
 };
 
