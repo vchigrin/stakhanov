@@ -113,8 +113,9 @@ RedisRequestResults::RedisRequestResults(
   RedisValue redis_val = redis_client_->command(
       "LRANGE", key, "0", "-1");
   if (redis_val.isOk()) {
-    MarkKeyAccessed(key);
     std::vector<RedisValue> file_set_hashes = redis_val.toArray();
+    if (!file_set_hashes.empty())
+      MarkKeyAccessed(key);
     file_sets_.reserve(file_set_hashes.size());
     for (const RedisValue& file_set_hash : file_set_hashes) {
       FileSet file_set;
