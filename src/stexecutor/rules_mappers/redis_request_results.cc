@@ -4,13 +4,13 @@
 
 #include "stexecutor/rules_mappers/redis_request_results.h"
 
-#include "base/redis_key_prefixes.h"
 #include "boost/archive/binary_iarchive.hpp"
 #include "boost/archive/binary_oarchive.hpp"
 #include "boost/lexical_cast.hpp"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/file_info.h"
 #include "stexecutor/rules_mappers/file_set.h"
+#include "stexecutorlib/redis_key_prefixes.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "third_party/redisclient/src/redisclient/redissyncclient.h"

@@ -7,8 +7,6 @@ add_executable(stexecutor
   build_directory_state.h
   cumulative_execution_response_builder.cc
   cumulative_execution_response_builder.h
-  distributed_files_storage.cc
-  distributed_files_storage.h
   dll_injector.cc
   dll_injector.h
   executed_command_info.h
@@ -22,9 +20,6 @@ add_executable(stexecutor
   file_hash.h
   files_filter.cc
   files_filter.h
-  files_storage.h
-  filesystem_files_storage.cc
-  filesystem_files_storage.h
   main.cc
   process_creation_request.cc
   process_creation_request.h
@@ -57,6 +52,7 @@ target_link_libraries(stexecutor
   cryptopp-static
   log4cplus
   redisclient
+  stexecutorlib
   sthook_communication
 )
 

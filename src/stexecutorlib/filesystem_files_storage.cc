@@ -2,7 +2,7 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#include "stexecutor/filesystem_files_storage.h"
+#include "stexecutorlib/filesystem_files_storage.h"
 
 #include <windows.h>
 

@@ -9,13 +9,13 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "stexecutor/cumulative_execution_response_builder.h"
-#include "stexecutor/files_storage.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
 #include "stexecutor/process_management_config.h"
 #include "stexecutor/build_directory_state.h"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/rules_mapper.h"
+#include "stexecutorlib/files_storage.h"
 
 namespace {
 

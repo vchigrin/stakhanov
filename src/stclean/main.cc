@@ -10,10 +10,10 @@
 #include "base/init_logging.h"
 #include "base/interface.h"
 #include "base/redis_client_pool.h"
-#include "base/redis_key_prefixes.h"
 #include "boost/algorithm/string.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
+#include "stexecutorlib/redis_key_prefixes.h"
 
 namespace {
 

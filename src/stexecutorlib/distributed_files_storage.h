@@ -2,8 +2,8 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#ifndef STEXECUTOR_DISTRIBUTED_FILES_STORAGE_H_
-#define STEXECUTOR_DISTRIBUTED_FILES_STORAGE_H_
+#ifndef STEXECUTORLIB_DISTRIBUTED_FILES_STORAGE_H_
+#define STEXECUTORLIB_DISTRIBUTED_FILES_STORAGE_H_
 
 #include <memory>
 #include <mutex>
@@ -12,7 +12,7 @@
 
 #include "boost/asio/io_service.hpp"
 #include "boost/property_tree/ptree_fwd.hpp"
-#include "stexecutor/filesystem_files_storage.h"
+#include "stexecutorlib/filesystem_files_storage.h"
 
 class RedisClientPool;
 
@@ -43,5 +43,5 @@ class DistributedFilesStorage : public FilesystemFilesStorage {
   boost::asio::io_service io_service_;
 };
 
-#endif  // STEXECUTOR_DISTRIBUTED_FILES_STORAGE_H_
+#endif  // STEXECUTORLIB_DISTRIBUTED_FILES_STORAGE_H_
 

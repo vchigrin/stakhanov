@@ -2,8 +2,8 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_REDIS_KEY_PREFIXES_H_
-#define BASE_REDIS_KEY_PREFIXES_H_
+#ifndef STEXECUTORLIB_REDIS_KEY_PREFIXES_H_
+#define STEXECUTORLIB_REDIS_KEY_PREFIXES_H_
 
 namespace redis_key_prefixes {
 
@@ -19,4 +19,4 @@ extern const char kKeyTimeStamp[];
 
 }  // namespace redis_key_prefixes
 
-#endif  // BASE_REDIS_KEY_PREFIXES_H_
+#endif  // STEXECUTORLIB_REDIS_KEY_PREFIXES_H_

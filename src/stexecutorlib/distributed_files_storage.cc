@@ -2,7 +2,7 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#include "stexecutor/distributed_files_storage.h"
+#include "stexecutorlib/distributed_files_storage.h"
 
 #include "boost/asio/ip/tcp.hpp"
 #include "boost/asio/read.hpp"
@@ -13,7 +13,7 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "base/redis_client_pool.h"
-#include "base/redis_key_prefixes.h"
+#include "stexecutorlib/redis_key_prefixes.h"
 #include "third_party/redisclient/src/redisclient/redissyncclient.h"
 
 namespace {

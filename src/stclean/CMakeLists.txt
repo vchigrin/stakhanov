@@ -7,6 +7,7 @@ target_link_libraries(stclean
   base
   log4cplus
   redisclient
+  stexecutorlib
 )
 
 target_include_directories(stclean PUBLIC

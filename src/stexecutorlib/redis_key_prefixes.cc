@@ -2,7 +2,7 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#include "base/redis_key_prefixes.h"
+#include "stexecutorlib/redis_key_prefixes.h"
 
 namespace redis_key_prefixes {
 
