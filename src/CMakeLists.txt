@@ -48,7 +48,12 @@ endforeach(flag_var)
 set(LOG4CPLUS_ENABLE_DECORATED_LIBRARY_NAME OFF CACHE BOOL "" FORCE)
 
 # ---------------------- Boost ---------------------------------------------
-set(BOOST_ROOT "C:\\local\\boost_1_60_0")
+# Boost library location can be set with enviroment variable GCLIENT_BOOST_ROOT
+if(DEFINED ENV{GCLIENT_BOOST_ROOT})
+  set(CACHED_BOOST_ROOT "$ENV{GCLIENT_BOOST_ROOT}" CACHE INTERNAL "Boost library path")
+endif()
+
+set(BOOST_ROOT "${CACHED_BOOST_ROOT}")
 if(CMAKE_CL_64)
   set(BOOST_LIBRARYDIR "${BOOST_ROOT}\\lib64-msvc-14.0")
 else()
