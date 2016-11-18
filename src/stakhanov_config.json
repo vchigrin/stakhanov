@@ -20,6 +20,9 @@
         "command_line_patterns": [ "^.*-nacl-as.exe$" ]
       },
       {
+        "command_line_patterns": [ "^.*gperf.exe$" ]
+      },
+      {
         "command_line_patterns": [ "^.*json_values_converter\\..*$" ]
       }
     ],
