@@ -18,9 +18,16 @@ class RedisClientPool;
 
 class DistributedFilesStorage : public FilesystemFilesStorage {
  public:
+  struct CleanResults {
+    uint64_t num_bytes_cleaned;
+    uint64_t num_bytes_left_filled;
+    uint64_t num_entries_cleaned;
+    uint64_t num_entries_left_filled;
+  };
   DistributedFilesStorage(
       const boost::property_tree::ptree& config,
       const std::shared_ptr<RedisClientPool>& redis_client_pool);
+  CleanResults CleanOrphanedEntries();
 
  protected:
   void OnStorageIdFilled(const std::string& storage_id) override;
@@ -30,6 +37,7 @@ class DistributedFilesStorage : public FilesystemFilesStorage {
       const std::string& storage_id) override;
 
  private:
+  std::unordered_set<std::string> LoadUsedStorageIds();
   void LoadConfig(const boost::property_tree::ptree& config);
   std::string GetHostNameForStorageId(const std::string& storage_id);
   bool DownloadFile(

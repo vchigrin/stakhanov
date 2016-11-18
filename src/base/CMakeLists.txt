@@ -13,6 +13,8 @@ add_library(base STATIC
   interface.h
   redis_client_pool.cc
   redis_client_pool.h
+  redis_key_scanner.cc
+  redis_key_scanner.h
   sthook_constants.cc
   sthook_constants.h
   string_utils.cc

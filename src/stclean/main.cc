@@ -10,9 +10,11 @@
 #include "base/init_logging.h"
 #include "base/interface.h"
 #include "base/redis_client_pool.h"
+#include "base/redis_key_scanner.h"
 #include "boost/algorithm/string.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
+#include "stexecutorlib/distributed_files_storage.h"
 #include "stexecutorlib/redis_key_prefixes.h"
 
 namespace {
@@ -27,48 +29,6 @@ log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 using FileSetKeyToRuleKeys =
     std::unordered_map<std::string, std::vector<std::string>>;
 
-// Helper class to iterate through results of SCAN command with
-// MATCH restriction
-class Scanner {
- public:
-  Scanner(RedisSyncClient* client, const std::string& match_restriction)
-      : client_(client),
-        match_restriction_(match_restriction),
-        current_cursor_("0") {
-  }
-  const std::vector<RedisValue>& current_results() const {
-    return current_results_;
-  }
-
-  // Returne false if this was the last chunk of data, and
-  // FetchNext should not be called any more.
-  bool FetchNext();
-
- private:
-  RedisSyncClient* client_;
-  const std::string match_restriction_;
-  std::string current_cursor_;
-  std::vector<RedisValue> current_results_;
-};
-
-bool Scanner::FetchNext() {
-  current_results_.empty();
-  RedisValue scan_reply = client_->command(
-      "SCAN", current_cursor_, "MATCH", match_restriction_);
-  std::vector<RedisValue> reply_array = scan_reply.toArray();
-  if (reply_array.size() != 2) {
-    LOG4CPLUS_ERROR(logger_, "Invalid reply on SCAN command");
-    return false;
-  }
-  current_cursor_ = reply_array[0].toString();
-  if (current_cursor_.empty()) {
-    LOG4CPLUS_ERROR(logger_, "Invalid reply on SCAN command");
-    return false;
-  }
-  current_results_ = reply_array[1].toArray();
-  return current_cursor_ != "0";
-}
-
 void RemoveRule(RedisSyncClient* client, const std::string& key) {
   client->command("DEL", key);
   // Delete all replies, associated with that rule.
@@ -77,15 +37,12 @@ void RemoveRule(RedisSyncClient* client, const std::string& key) {
   const std::string request_hash = key.substr(key.find(':') + 1);
   const std::string match_restriction =
       std::string(redis_key_prefixes::kResponse) + request_hash + "_*";
-  Scanner scanner(client, match_restriction);
+  RedisKeyScanner scanner(client, match_restriction);
   bool has_more_data = false;
   do {
     has_more_data = scanner.FetchNext();
-    const std::vector<RedisValue>& response_keys = scanner.current_results();
-    for (const RedisValue& response_key : response_keys) {
-      std::string response_key_str = response_key.toString();
-      client->command("DEL", response_key_str);
-    }
+    for (const std::string& response_key : scanner.current_results())
+      client->command("DEL", response_key);
   } while (has_more_data);
 }
 
@@ -96,24 +53,22 @@ std::multimap<time_t, std::string> LoadKeyAccessTimes(
   std::multimap<time_t, std::string> result;
   const std::string match_restriction =
       std::string(redis_key_prefixes::kKeyTimeStamp) + "*";
-  Scanner scanner(client, match_restriction);
+  RedisKeyScanner scanner(client, match_restriction);
   bool has_more_data = false;
   do {
     has_more_data = scanner.FetchNext();
-    const std::vector<RedisValue>& timestamp_keys = scanner.current_results();
-    for (const RedisValue& timestamp_key : timestamp_keys) {
-      std::string timestamp_key_str = timestamp_key.toString();
+    for (const std::string& timestamp_key : scanner.current_results()) {
       std::string timestamp_str =
-          client->command("GET", timestamp_key_str).toString();
+          client->command("GET", timestamp_key).toString();
       if (timestamp_str.empty()) {
         LOG4CPLUS_ERROR(
-            logger_, "Corrupt timestamp key " << timestamp_key_str.c_str());
+            logger_, "Corrupt timestamp key " << timestamp_key.c_str());
         continue;
       }
       time_t timestamp = boost::lexical_cast<time_t>(timestamp_str);
       result.insert(
           std::make_pair(timestamp,
-                         timestamp_key_str.substr(key_timestamp_prefix_len)));
+                         timestamp_key.substr(key_timestamp_prefix_len)));
     }
   } while (has_more_data);
   return result;
@@ -139,16 +94,15 @@ int64_t GetRedisMemoryUsage(RedisSyncClient* client) {
 }
 
 FileSetKeyToRuleKeys LoadFileSetKeyToRuleKeys(RedisSyncClient* client) {
-  Scanner scanner(client, std::string(redis_key_prefixes::kRules) + "*");
+  RedisKeyScanner scanner(
+      client, std::string(redis_key_prefixes::kRules) + "*");
   bool has_more_data = false;
   std::unordered_map<std::string, std::vector<std::string>> result;
   do {
     has_more_data = scanner.FetchNext();
-    const std::vector<RedisValue>& rule_keys = scanner.current_results();
-    for (const RedisValue& rule_key : rule_keys) {
-      std::string rule_key_str = rule_key.toString();
+    for (const std::string& rule_key : scanner.current_results()) {
       RedisValue redis_val = client->command(
-          "LRANGE", rule_key_str, "0", "-1");
+          "LRANGE", rule_key, "0", "-1");
       std::vector<RedisValue> file_set_hashes = redis_val.toArray();
       for (const RedisValue& file_set_hash : file_set_hashes) {
         const std::string file_set_hash_str = file_set_hash.toString();
@@ -158,7 +112,7 @@ FileSetKeyToRuleKeys LoadFileSetKeyToRuleKeys(RedisSyncClient* client) {
         }
         std::string file_set_key = std::string(redis_key_prefixes::kFileSets) +
             file_set_hash_str;
-        result[file_set_key].push_back(rule_key_str);
+        result[file_set_key].push_back(rule_key);
       }
     }
   } while (has_more_data);
@@ -247,14 +201,13 @@ void LoadUsedContentIdAndFileInfoKeys(
     std::unordered_set<std::string>* used_file_info_keys) {
   const std::string match_restriction =
       std::string(redis_key_prefixes::kFileSets) + "_*";
-  Scanner scanner(client, match_restriction);
+  RedisKeyScanner scanner(client, match_restriction);
   bool has_more_data = false;
   do {
     has_more_data = scanner.FetchNext();
-    const std::vector<RedisValue>& file_set_keys = scanner.current_results();
-    for (const RedisValue& file_set_key : file_set_keys) {
+    for (const std::string& file_set_key : scanner.current_results()) {
       RedisValue file_set_val = client->command(
-          "LRANGE", file_set_key.toString(), "0", "-1");
+          "LRANGE", file_set_key, "0", "-1");
       std::vector<RedisValue> file_info_entries = file_set_val.toArray();
       for (const RedisValue& file_info_entry : file_info_entries) {
         const std::string file_info_key =
@@ -284,16 +237,14 @@ int64_t RemoveOrphanedKeys(
     RedisSyncClient* client,
     const std::unordered_set<std::string>& used_keys,
     const std::string& key_prefix) {
-  Scanner scanner(client, key_prefix + "*");
+  RedisKeyScanner scanner(client, key_prefix + "*");
   bool has_more_data = false;
   int64_t deleted_key_count = 0;
   do {
     has_more_data = scanner.FetchNext();
-    const std::vector<RedisValue>& present_keys = scanner.current_results();
-    for (const RedisValue& key : present_keys) {
-      std::string key_str = key.toString();
-      if (used_keys.count(key_str) == 0) {
-        client->command("DEL", key_str);
+    for (const std::string& key : scanner.current_results()) {
+      if (used_keys.count(key) == 0) {
+        client->command("DEL", key);
         deleted_key_count++;
       }
     }
@@ -332,10 +283,6 @@ void CleanRedisToSize(
   current_size = GetRedisMemoryUsage(client);
   std::cout << "Finished: after removing Redis consumes " << current_size
             << " bytes" << std::endl;
-}
-
-void CleanFileStorageFromOrphanedEntries(RedisSyncClient* redis_client) {
-  // TODO(vchigrin):
 }
 
 }  // namespace
@@ -396,7 +343,7 @@ int main(int argc, const char* argv[]) {
     try {
       target_number_of_bytes =
           variables["target_redis_number_of_bytes"].as<int64_t>();
-    } catch (const std::exception& ex) {
+    } catch (const std::exception&) {
       std::cerr
           << "clean-redis mode requires integer target_redis_number_of_bytes"
           << std::endl;
@@ -406,9 +353,17 @@ int main(int argc, const char* argv[]) {
         RedisClientType::READ_WRITE);
     CleanRedisToSize(redis_result.client(), target_number_of_bytes);
   } else if (clean_files_storage) {
-    auto redis_result = redis_client_pool->GetClient(
-        RedisClientType::READ_ONLY);
-    CleanFileStorageFromOrphanedEntries(redis_result.client());
+    DistributedFilesStorage storage(config, redis_client_pool);
+    DistributedFilesStorage::CleanResults results =
+        storage.CleanOrphanedEntries();
+    std::cout << "Cleaned " << results.num_bytes_cleaned
+              << " bytes" << std::endl;
+    std::cout << "Cleaned " << results.num_entries_cleaned
+              << " entries" << std::endl;
+    std::cout << "Left filled " << results.num_bytes_left_filled
+              << " bytes" << std::endl;
+    std::cout << "Left filled " << results.num_entries_left_filled
+              << " entries" << std::endl;
   }
   return 0;
 }

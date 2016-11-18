@@ -16,8 +16,6 @@ add_executable(stexecutor
   executor_factory.h
   executor_impl.cc
   executor_impl.h
-  file_hash.cc
-  file_hash.h
   files_filter.cc
   files_filter.h
   main.cc

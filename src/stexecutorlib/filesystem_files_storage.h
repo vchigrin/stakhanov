@@ -37,14 +37,15 @@ class FilesystemFilesStorage : public FilesStorage {
       const boost::filesystem::path& dest_path);
   static std::string GetFileHash(const boost::filesystem::path& file_path);
   static std::string RelFilePathFromId(const std::string& storage_id);
+  std::string IdFromFilePath(const boost::filesystem::path& file_path);
   boost::filesystem::path PreparePlace(const std::string& storage_id);
+  boost::filesystem::path storage_dir_;
 
  private:
   void LoadConfig(const boost::property_tree::ptree& config);
   boost::filesystem::path FilePathFromId(const std::string& storage_id);
   bool IsSafeToLink(const boost::filesystem::path& file_path);
 
-  boost::filesystem::path storage_dir_;
   // Zero means no limit.
   uint32_t max_file_size_;
   std::string empty_content_id_;

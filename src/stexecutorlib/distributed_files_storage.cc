@@ -4,6 +4,7 @@
 
 #include "stexecutorlib/distributed_files_storage.h"
 
+#include "base/redis_key_scanner.h"
 #include "boost/asio/ip/tcp.hpp"
 #include "boost/asio/read.hpp"
 #include "boost/asio/read_until.hpp"
@@ -18,7 +19,8 @@
 
 namespace {
 
-log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
+log4cplus::Logger logger_ = log4cplus::Logger::getInstance(
+    L"DistributedFilesStorage");
 
 std::string GetLocalHostName() {
   // MSDN says 256 bytes should be always enough.
@@ -46,6 +48,38 @@ DistributedFilesStorage::DistributedFilesStorage(
   LoadConfig(config);
   this_host_name_ = GetLocalHostName();
   LOG4CPLUS_INFO(logger_, "This host name " << this_host_name_.c_str());
+}
+
+DistributedFilesStorage::CleanResults
+DistributedFilesStorage::CleanOrphanedEntries() {
+  std::unordered_set<std::string> used_storage_ids(LoadUsedStorageIds());
+  boost::filesystem::recursive_directory_iterator it(storage_dir_);
+  boost::filesystem::recursive_directory_iterator end;
+  CleanResults results = { 0 };
+  for (; it != end; ++it) {
+    if (!boost::filesystem::is_regular_file(it->status()))
+      continue;
+    boost::system::error_code error;
+    uint64_t file_size = boost::filesystem::file_size(it->path());
+    std::string storage_id = IdFromFilePath(it->path());
+    if (used_storage_ids.count(storage_id) == 0) {
+      boost::filesystem::remove(it->path(), error);
+      if (!error) {
+        results.num_entries_cleaned++;
+        results.num_bytes_cleaned += file_size;
+      } else {
+        LOG4CPLUS_ERROR(
+            logger_,
+            "Failed remove entry " << it->path() << " error " << error);
+        results.num_entries_left_filled++;
+        results.num_bytes_left_filled += file_size;
+      }
+    } else {
+      results.num_entries_left_filled++;
+      results.num_bytes_left_filled += file_size;
+    }
+  }
+  return results;
 }
 
 void DistributedFilesStorage::OnStorageIdFilled(
@@ -224,6 +258,23 @@ bool DistributedFilesStorage::DownloadFile(
     return false;
   }
   return true;
+}
+
+std::unordered_set<std::string> DistributedFilesStorage::LoadUsedStorageIds() {
+  RedisClientPool::Result redis_client_holder =
+      redis_client_pool_->GetClient(RedisClientType::READ_ONLY);
+  RedisKeyScanner scanner(
+      redis_client_holder.client(),
+      std::string(redis_key_prefixes::kStoredFileHosts) + "*");
+  bool has_more_data = false;
+  const size_t kPrefixLen = strlen(redis_key_prefixes::kStoredFileHosts);
+  std::unordered_set<std::string> result;
+  do {
+    has_more_data = scanner.FetchNext();
+    for (const std::string& key : scanner.current_results())
+      result.insert(key.substr(kPrefixLen));
+  } while (has_more_data);
+  return result;
 }
 
 void DistributedFilesStorage::LoadConfig(

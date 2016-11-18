@@ -2,7 +2,7 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#include "stexecutor/file_hash.h"
+#include "stexecutorlib/file_hash.h"
 
 #include <windows.h>
 #include <vector>

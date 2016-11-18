@@ -5,6 +5,8 @@
 add_library(stexecutorlib STATIC
   distributed_files_storage.cc
   distributed_files_storage.h
+  file_hash.cc
+  file_hash.h
   files_storage.h
   filesystem_files_storage.cc
   filesystem_files_storage.h
@@ -15,6 +17,7 @@ add_library(stexecutorlib STATIC
 
 target_link_libraries(stexecutorlib
   ${Boost_LIBRARIES}
+  cryptopp-static
   log4cplus
 )
 
