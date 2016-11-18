@@ -5,11 +5,20 @@
 
 import subprocess
 import sys
+import os
 
 
 def main():
+    new_env = {
+        'NUMBER_OF_PROCESSORS': os.environ['NUMBER_OF_PROCESSORS'],
+        'PROCESSOR_ARCHITECTURE': 'AMD64',
+        'SystemRoot': r'C:\Windows',
+        'Path': r'C:\Windows;C:\Windows\System32',
+        'TMP': os.environ['TMP'],
+    }
     process = subprocess.Popen(
-        sys.argv[1:], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        sys.argv[1:], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        env=new_env)
     output, err_output = process.communicate()
     process.wait()
     print '-' * 80
