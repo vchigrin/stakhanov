@@ -1,7 +1,7 @@
 vars = {
   # log4cplus REL_1_2_0-RC4 tag.
   "log4cplus_revision": "77de48a56d8d1e1fee1b7f0e35cdb9d17ad4f738",
-  "thrift_revision": "53dd39833a08ce33582e5ff31fa18bb4735d6731",
+  "thrift_revision": "2a89bd94ac4ba8c645cad1e0c01606fdac6dc30b",
   # Crypto++ master, > 5.6.3. CMake build is not went to any release yet,
   # replace it once any stable release with CMake build appears.
   "cryptopp_revision": "a96d60e4e8d9646e099f2009f9a9a5df2d3c1803",
