@@ -16,10 +16,22 @@ class RedisClientPool;
 
 namespace interface {
 
+extern const char kHelpOption[];
+extern const char kSilentLogOption[];
+extern const char kBuildDirOption[];
+extern const char kRulesMapperTypeOption[];
+extern const char kDumpEnvDirOption[];
+extern const char kConfigFileOption[];
+extern const char kDumpRulesDirOption[];
+
+enum class RulesMapperType {
+  InMemory,
+  Redis
+};
+
 boost::property_tree::ptree LoadConfig(const boost::filesystem::path& path);
 
 bool ProcessOptions(
-    const boost::program_options::options_description& desc,
     int argc, const char* argv[],
     boost::program_options::variables_map* variables,
     const std::string& help_message);

@@ -46,24 +46,15 @@ DllInjector::SystemFunctionAddr GetAddr(
   boost::filesystem::path exe_path =
       current_executable_dir / kGetNtDllProcExecutable;
 
-  std::vector<wchar_t> mutabble_command_line;
-  auto exe_path_str = exe_path.native();
-  std::copy(
-      exe_path_str.begin(),
-      exe_path_str.end(),
-      std::back_inserter(mutabble_command_line));
-  mutabble_command_line.push_back(L' ');
-  auto function_name_wide = base::ToWideFromANSI(function_name);
-  std::copy(
-      function_name_wide.begin(),
-      function_name_wide.end(),
-      std::back_inserter(mutabble_command_line));
-  mutabble_command_line.push_back(L'\0');
+  // TODO: Check for spaces in exe path to wrap in quotes.
+  std::wstring mutable_command_line(exe_path.native());
+  mutable_command_line += L' ';
+  mutable_command_line += base::ToWideFromANSI(function_name);
 
   PROCESS_INFORMATION pi = { 0 };
   STARTUPINFO si = { 0 };
   DllInjector::SystemFunctionAddr result;
-  if (!CreateProcessW(NULL, mutabble_command_line.data(), NULL, NULL, FALSE,
+  if (!CreateProcessW(NULL, &mutable_command_line[0], NULL, NULL, FALSE,
       0, NULL, NULL, &si, &pi)) {
     DWORD error = GetLastError();
     LOG4CPLUS_FATAL(logger_,
@@ -102,48 +93,65 @@ BOOL WINAPI ConsoleHandler(DWORD ctrl_type) {
   return FALSE;
 }
 
-enum class RulesMapperType {
-  InMemory,
-  Redis
-};
+std::tuple<std::unique_ptr<rules_mappers::RulesMapper>,
+           std::unique_ptr<FilesStorage>>
+CreateRulesMapperAndStorage(
+    const boost::program_options::variables_map& option_variables) {
+  using namespace interface;
 
-std::istream& operator >> (
-    std::istream &in, RulesMapperType& rules_mapper_type) {  // NOLINT
-  std::string token;
-  in >> token;
-  if (token == "in-memory")
-    rules_mapper_type = RulesMapperType::InMemory;
-  else if (token == "redis")
-    rules_mapper_type = RulesMapperType::Redis;
-  else
-    throw boost::program_options::validation_error(
-        boost::program_options::validation_error::invalid_option_value,
-        "Invalid Rules mapper type");
-  return in;
-}
+  const RulesMapperType rules_mapper_type =
+      option_variables[kRulesMapperTypeOption].as<interface::RulesMapperType>();
+  const auto& config = LoadConfig(
+      option_variables[kConfigFileOption].as<boost::filesystem::path>());
 
-std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
-    const boost::program_options::variables_map& option_variables,
-    const std::shared_ptr<RedisClientPool>& redis_client_pool) {
-  RulesMapperType rules_mapper_type =
-      option_variables["rules_mapper_type"].as<RulesMapperType>();
+  // We don't need a Redis stuff in case of in-memory type.
   if (rules_mapper_type == RulesMapperType::InMemory) {
     std::unique_ptr<rules_mappers::InMemoryRulesMapper> rules_mapper(
         new rules_mappers::InMemoryRulesMapper());
-    auto it = option_variables.find("dump_rules_dir");
+    auto it = option_variables.find(kDumpRulesDirOption);
     if (it != option_variables.end()) {
       rules_mapper->set_dbg_dump_rules_dir(
           it->second.as<boost::filesystem::path>());
     }
-    return rules_mapper;
+    return std::make_tuple(std::move(rules_mapper),
+                           std::make_unique<FilesystemFilesStorage>(config));
   } else if (rules_mapper_type == RulesMapperType::Redis) {
-    std::unique_ptr<rules_mappers::RedisRulesMapper> rules_mapper(
-        new rules_mappers::RedisRulesMapper(redis_client_pool));
-    return rules_mapper;
+    std::shared_ptr<RedisClientPool> redis_pool =
+        BuildRedisClientPoolFromConfig(config);
+    std::unique_ptr<FilesStorage> file_storage(
+        new DistributedFilesStorage(config, redis_pool));
+    return std::make_tuple(
+        std::make_unique<rules_mappers::RedisRulesMapper>(redis_pool),
+        std::move(file_storage));
   } else {
     LOG4CPLUS_ASSERT(logger_, false);
+    return { nullptr, nullptr };
+  }
+}
+
+std::unique_ptr<DllInjector> CreateInjector() {
+  const boost::filesystem::path current_executable_dir =
+      base::GetCurrentExecutableDir();
+  if (current_executable_dir.empty()) {
+    LOG4CPLUS_FATAL(logger_, "Failed get current executable dir");
     return nullptr;
   }
+
+  DllInjector::SystemFunctionAddr ldr_load_dll_addr = GetAddr(
+      current_executable_dir, "LdrLoadDll");
+  DllInjector::SystemFunctionAddr nt_set_event_addr = GetAddr(
+      current_executable_dir, "NtSetEvent");
+  if (!ldr_load_dll_addr.is_valid() || !nt_set_event_addr.is_valid()) {
+    LOG4CPLUS_FATAL(logger_, "Failed get ntdll function addresses at path: "
+                                 << current_executable_dir);
+    return nullptr;
+  }
+
+  return std::make_unique<DllInjector>(
+      current_executable_dir / base::kStHookDllName32Bit,
+      current_executable_dir / base::kStHookDllName64Bit,
+      ldr_load_dll_addr,
+      nt_set_event_addr);
 }
 
 class CustomEventHandler : public apache::thrift::TProcessorEventHandler {
@@ -178,76 +186,35 @@ class CustomExecutorProcessorFactory : public ExecutorProcessorFactory {
 }  // namespace
 
 int main(int argc, const char* argv[]) {
+  using namespace interface;
   using apache::thrift::transport::TPipeServer;
   using apache::thrift::transport::TBufferedTransportFactory;
   using apache::thrift::protocol::TBinaryProtocolFactory;
-  base::InitLogging(true);
-  boost::program_options::options_description general_desc("General");
-  general_desc.add_options()
-      ("help", "Print help message")
-      ("build_dir",
-       boost::program_options::value<boost::filesystem::path>()->required(),
-        "Directory where build will run")
-      ("rules_mapper_type",
-       boost::program_options::value<RulesMapperType>()->required(),
-      "Rules mapper to use. Either \"in-memory\" or \"redis\"")
-      ("dump_env_dir",
-       boost::program_options::value<boost::filesystem::path>(),
-        "Directory to dump env blocks for debugging purposes")
-      ("config_file",
-       boost::program_options::value<boost::filesystem::path>()->required(),
-        "Path to config JSON file with additional options");
-
-  boost::program_options::options_description in_memory_desc(
-      "InMemory rules mapper options");
-  in_memory_desc.add_options()
-      ("dump_rules_dir",
-       boost::program_options::value<boost::filesystem::path>(),
-        "Directory to dump observed rules for debugging purposes");
-
-  boost::program_options::options_description desc;
-  desc.add(general_desc).add(in_memory_desc);
+  namespace fs = boost::filesystem;
 
   boost::program_options::variables_map variables;
-  if (!interface::ProcessOptions(desc, argc, argv, &variables, std::string()))
+  if (!interface::ProcessOptions(argc, argv, &variables, std::string()))
     return 1;
 
-  boost::filesystem::path build_dir_path =
-      variables["build_dir"].as<boost::filesystem::path>();
+  base::InitLogging(!variables.count(kSilentLogOption));
 
-  boost::filesystem::path current_executable_dir =
-      base::GetCurrentExecutableDir();
-  if (current_executable_dir.empty()) {
-    LOG4CPLUS_FATAL(logger_, "Failed get current executable dir");
+  std::unique_ptr<DllInjector> dll_injector = CreateInjector();
+  if (!dll_injector) {
+    LOG4CPLUS_FATAL(logger_, "Failed to create DLL injector");
     return 1;
   }
-  DllInjector::SystemFunctionAddr ldr_load_dll_addr = GetAddr(
-      current_executable_dir, "LdrLoadDll");
-  DllInjector::SystemFunctionAddr nt_set_event_addr = GetAddr(
-      current_executable_dir, "NtSetEvent");
-  if (!ldr_load_dll_addr.is_valid() || !nt_set_event_addr.is_valid()) {
-    LOG4CPLUS_FATAL(logger_, "Failed get ntdll function addresses");
+
+  std::unique_ptr<rules_mappers::RulesMapper> rules_mapper;
+  std::unique_ptr<FilesStorage> file_storage;
+  std::tie(rules_mapper, file_storage) = CreateRulesMapperAndStorage(variables);
+  if (!rules_mapper || !file_storage) {
+    LOG4CPLUS_FATAL(logger_, "Failed to create rules mapper or storage");
     return 1;
   }
-  std::unique_ptr<DllInjector> dll_injector = std::make_unique<DllInjector>(
-      current_executable_dir / base::kStHookDllName32Bit,
-      current_executable_dir / base::kStHookDllName64Bit,
-      ldr_load_dll_addr,
-      nt_set_event_addr);
 
-  boost::property_tree::ptree config = interface::LoadConfig(
-      variables["config_file"].as<boost::filesystem::path>());
-  std::shared_ptr<RedisClientPool> redis_client_pool =
-      interface::BuildRedisClientPoolFromConfig(config);
-
-  std::unique_ptr<FilesStorage> file_storage(
-      new DistributedFilesStorage(config, redis_client_pool));
-  std::unique_ptr<rules_mappers::RulesMapper> rules_mapper =
-      CreateRulesMapper(variables, redis_client_pool);
-  if (!rules_mapper) {
-    LOG4CPLUS_FATAL(logger_, "Failed create rules mapper");
-    return 1;
-  }
+  const fs::path build_dir_path = variables[kBuildDirOption].as<fs::path>();
+  boost::property_tree::ptree config =
+      LoadConfig(variables[kConfigFileOption].as<boost::filesystem::path>());
   std::unique_ptr<BuildDirectoryState> build_dir_state(
       new BuildDirectoryState(build_dir_path));
   std::unique_ptr<ExecutingEngine> executing_engine(new ExecutingEngine(
@@ -261,7 +228,7 @@ int main(int argc, const char* argv[]) {
           std::move(dll_injector),
           executing_engine.get(),
           std::make_unique<FilesFilter>(config));
-  auto it = variables.find("dump_env_dir");
+  auto it = variables.find(kDumpEnvDirOption);
   if (it != variables.end()) {
     executor_factory->set_dump_env_dir(
         it->second.as<boost::filesystem::path>());
