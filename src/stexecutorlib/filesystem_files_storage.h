@@ -2,15 +2,15 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#ifndef STEXECUTOR_FILESYSTEM_FILES_STORAGE_H_
-#define STEXECUTOR_FILESYSTEM_FILES_STORAGE_H_
+#ifndef STEXECUTORLIB_FILESYSTEM_FILES_STORAGE_H_
+#define STEXECUTORLIB_FILESYSTEM_FILES_STORAGE_H_
 
 #include <mutex>
 #include <string>
 #include <unordered_set>
 
 #include "boost/property_tree/ptree_fwd.hpp"
-#include "stexecutor/files_storage.h"
+#include "stexecutorlib/files_storage.h"
 
 class FilesystemFilesStorage : public FilesStorage {
  public:
@@ -37,14 +37,15 @@ class FilesystemFilesStorage : public FilesStorage {
       const boost::filesystem::path& dest_path);
   static std::string GetFileHash(const boost::filesystem::path& file_path);
   static std::string RelFilePathFromId(const std::string& storage_id);
+  std::string IdFromFilePath(const boost::filesystem::path& file_path);
   boost::filesystem::path PreparePlace(const std::string& storage_id);
+  boost::filesystem::path storage_dir_;
 
  private:
   void LoadConfig(const boost::property_tree::ptree& config);
   boost::filesystem::path FilePathFromId(const std::string& storage_id);
   bool IsSafeToLink(const boost::filesystem::path& file_path);
 
-  boost::filesystem::path storage_dir_;
   // Zero means no limit.
   uint32_t max_file_size_;
   std::string empty_content_id_;
@@ -53,4 +54,4 @@ class FilesystemFilesStorage : public FilesStorage {
   std::unordered_set<std::string> safe_to_link_extensions_;
 };
 
-#endif  // STEXECUTOR_FILESYSTEM_FILES_STORAGE_H_
+#endif  // STEXECUTORLIB_FILESYSTEM_FILES_STORAGE_H_

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#include "stexecutor/filesystem_files_storage.h"
+#include "stexecutorlib/filesystem_files_storage.h"
 
 #include <windows.h>
 
@@ -11,7 +11,7 @@
 #include "base/scoped_handle.h"
 #include "base/string_utils.h"
 #include "boost/property_tree/ptree.hpp"
-#include "stexecutor/file_hash.h"
+#include "stexecutorlib/file_hash.h"
 #include "third_party/cryptopp/md5.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
@@ -295,6 +295,20 @@ std::string FilesystemFilesStorage::RelFilePathFromId(
   std::string top_dir_name = storage_id.substr(0, kTopDirCharacters);
   std::string object_name = storage_id.substr(kTopDirCharacters);
   return top_dir_name + "/" + object_name;
+}
+
+std::string FilesystemFilesStorage::IdFromFilePath(
+    const boost::filesystem::path& file_path) {
+  auto rel_path = boost::filesystem::relative(file_path, storage_dir_);
+  std::vector<std::string> components;
+  for (auto it = rel_path.begin(); it != rel_path.end(); ++it)
+    components.push_back(it->generic_string());
+  if (components.size() != 2 || components[0].length() != kTopDirCharacters) {
+    LOG4CPLUS_ERROR(
+        logger_, "Invalid entry path " << file_path.generic_string().c_str());
+    return std::string();
+  }
+  return components[0] + components[1];
 }
 
 bool FilesystemFilesStorage::IsSafeToLink(

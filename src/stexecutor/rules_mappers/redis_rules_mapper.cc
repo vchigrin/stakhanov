@@ -4,9 +4,9 @@
 
 #include "stexecutor/rules_mappers/redis_rules_mapper.h"
 
+#include "base/redis_client_pool.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
-#include "stexecutor/redis_client_pool.h"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/redis_request_results.h"
 #include "third_party/redisclient/src/redisclient/redissyncclient.h"

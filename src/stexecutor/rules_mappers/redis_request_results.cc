@@ -6,10 +6,11 @@
 
 #include "boost/archive/binary_iarchive.hpp"
 #include "boost/archive/binary_oarchive.hpp"
-#include "stexecutor/redis_key_prefixes.h"
+#include "boost/lexical_cast.hpp"
 #include "stexecutor/rules_mappers/cached_execution_response.h"
 #include "stexecutor/rules_mappers/file_info.h"
 #include "stexecutor/rules_mappers/file_set.h"
+#include "stexecutorlib/redis_key_prefixes.h"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "third_party/redisclient/src/redisclient/redissyncclient.h"
@@ -108,10 +109,13 @@ RedisRequestResults::RedisRequestResults(
     : redis_client_(redis_client),
       request_hash_(request_hash) {
   // Get the whole list.
+  const std::string key = RequestHashToRedisKey(request_hash);
   RedisValue redis_val = redis_client_->command(
-      "LRANGE", RequestHashToRedisKey(request_hash), "0", "-1");
+      "LRANGE", key, "0", "-1");
   if (redis_val.isOk()) {
     std::vector<RedisValue> file_set_hashes = redis_val.toArray();
+    if (!file_set_hashes.empty())
+      MarkKeyAccessed(key);
     file_sets_.reserve(file_set_hashes.size());
     for (const RedisValue& file_set_hash : file_set_hashes) {
       FileSet file_set;
@@ -130,15 +134,19 @@ void RedisRequestResults::AddRule(
   const FileSet file_set(std::move(input_files));
   const HashValue input_files_hash = HashFileSet(file_set);
   std::string input_files_hash_string = HashValueToString(input_files_hash);
-  SaveFileSet(FileSetHashToKey(input_files_hash_string), file_set);
-  std::string key = RequestAndFileSetHashToKey(
+  const std::string file_set_key = FileSetHashToKey(input_files_hash_string);
+  SaveFileSet(file_set_key, file_set);
+  MarkKeyAccessed(file_set_key);
+  const std::string execution_response_key = RequestAndFileSetHashToKey(
       request_hash_,
       input_files_hash);
-  SaveExecutionResponse(key, *response);
+  SaveExecutionResponse(execution_response_key, *response);
+  const std::string request_key = RequestHashToRedisKey(request_hash_);
   redis_client_->command(
       "RPUSH",
-      RequestHashToRedisKey(request_hash_),
+      request_key,
       input_files_hash_string);
+  MarkKeyAccessed(request_key);
 }
 
 std::unique_ptr<CachedExecutionResponse>
@@ -150,14 +158,16 @@ RedisRequestResults::FindCachedResults(
     if (FileSetMatchesBuildState(
         file_set,
         build_dir_state)) {
-      std::string key = RequestAndFileSetHashToKey(
+      const rules_mappers::HashValue file_set_hash = HashFileSet(file_set);
+      const std::string response_key = RequestAndFileSetHashToKey(
           request_hash_,
-          HashFileSet(file_set));
+          file_set_hash);
       std::unique_ptr<CachedExecutionResponse> result = LoadExecutionResponse(
-          key);
+          response_key);
       if (!result)
         return nullptr;
       *input_files = file_set.file_infos();
+      MarkKeyAccessed(FileSetHashToKey(HashValueToString(file_set_hash)));
       return result;
     }
   }
@@ -197,6 +207,9 @@ void RedisRequestResults::SaveFileInfo(
 
 bool RedisRequestResults::LoadFileSet(
     const std::string& file_set_hash, FileSet* file_set) {
+  // NOTE: we intentially do not mark keys "accessed" here - we want
+  // only matched FileSet to update it time, to ensure separate FileSets
+  // will expire idependently.
   RedisValue file_set_val = redis_client_->command(
       "LRANGE", FileSetHashToKey(file_set_hash), "0", "-1");
   if (!file_set_val.isOk()) {
@@ -258,6 +271,15 @@ void RedisRequestResults::SaveFileSet(
 void RedisRequestResults::SaveExecutionResponse(
     const std::string& key, const CachedExecutionResponse& response) {
   redis_client_->command("SET", key, SerializeToString(response));
+}
+
+void RedisRequestResults::MarkKeyAccessed(const std::string& key) {
+  const auto now = std::chrono::system_clock::to_time_t(
+      std::chrono::system_clock::now());
+  redis_client_->command(
+      "SET",
+      redis_key_prefixes::kKeyTimeStamp + key,
+      boost::lexical_cast<std::string>(now));
 }
 
 }  // namespace rules_mappers

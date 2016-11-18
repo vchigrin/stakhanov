@@ -7,8 +7,6 @@ add_executable(stexecutor
   build_directory_state.h
   cumulative_execution_response_builder.cc
   cumulative_execution_response_builder.h
-  distributed_files_storage.cc
-  distributed_files_storage.h
   dll_injector.cc
   dll_injector.h
   executed_command_info.h
@@ -18,13 +16,8 @@ add_executable(stexecutor
   executor_factory.h
   executor_impl.cc
   executor_impl.h
-  file_hash.cc
-  file_hash.h
   files_filter.cc
   files_filter.h
-  files_storage.h
-  filesystem_files_storage.cc
-  filesystem_files_storage.h
   main.cc
   process_creation_request.cc
   process_creation_request.h
@@ -32,10 +25,6 @@ add_executable(stexecutor
   process_creation_response.h
   process_management_config.cc
   process_management_config.h
-  redis_key_prefixes.cc
-  redis_key_prefixes.h
-  redis_client_pool.cc
-  redis_client_pool.h
   rules_mappers/cached_execution_response.h
   rules_mappers/file_info.h
   rules_mappers/file_set.cc
@@ -61,6 +50,7 @@ target_link_libraries(stexecutor
   cryptopp-static
   log4cplus
   redisclient
+  stexecutorlib
   sthook_communication
 )
 

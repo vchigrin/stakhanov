@@ -45,6 +45,8 @@ class RedisRequestResults : public RequestResultsBase {
   void SaveFileInfo(const std::string& key, const FileInfo& file_info);
   void SaveExecutionResponse(
       const std::string& key, const CachedExecutionResponse& response);
+  // At present marked only "Request hash" and "File set hash" keys.
+  void MarkKeyAccessed(const std::string& key);
 
   RedisSyncClient* redis_client_;
   const HashValue request_hash_;

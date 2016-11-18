@@ -12,8 +12,8 @@
 #include "base/filesystem_utils.h"
 #include "base/scoped_handle.h"
 #include "base/string_utils.h"
-#include "stexecutor/file_hash.h"
-#include "stexecutor/files_storage.h"
+#include "stexecutorlib/file_hash.h"
+#include "stexecutorlib/files_storage.h"
 #include "third_party/cryptopp/md5.h"
 
 using HashAlgorithm = CryptoPP::Weak::MD5;

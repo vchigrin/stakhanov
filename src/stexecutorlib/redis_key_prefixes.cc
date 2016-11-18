@@ -2,7 +2,7 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#include "stexecutor/redis_key_prefixes.h"
+#include "stexecutorlib/redis_key_prefixes.h"
 
 namespace redis_key_prefixes {
 
@@ -11,6 +11,7 @@ const char kFileSets[] = "FS:";
 const char kFileInfos[] = "FI:";
 const char kResponse[] = "RS:";
 const char kStoredFileHosts[] = "F:";
+const char kKeyTimeStamp[] = "TS:";
 
 }  // namespace redis_key_prefixes
 

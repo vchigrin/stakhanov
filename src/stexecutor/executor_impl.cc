@@ -10,13 +10,13 @@
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
 #include "stexecutor/build_directory_state.h"
-#include "stexecutor/files_storage.h"
 #include "stexecutor/dll_injector.h"
 #include "stexecutor/executing_engine.h"
 #include "stexecutor/executor_factory.h"
 #include "stexecutor/files_filter.h"
 #include "stexecutor/process_creation_request.h"
 #include "stexecutor/process_creation_response.h"
+#include "stexecutorlib/files_storage.h"
 
 namespace {
 

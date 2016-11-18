@@ -2,7 +2,7 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#include "stexecutor/redis_client_pool.h"
+#include "base/redis_client_pool.h"
 
 #include <future>
 
@@ -16,6 +16,10 @@ namespace {
 log4cplus::Logger logger_ = log4cplus::Logger::getRoot();
 
 void OnRedisError(const std::string& error_msg) {
+  // Note: It may be invoked during unsubscription from channel, e.g.
+  // for Redis Sentinel clients.
+  // TODO(vchigrin): Fix this (may be in thirdparty library).
+  // We should cleanly separate errors from normal unsubscription.
   LOG4CPLUS_ERROR(logger_, "REDIS ERROR " << error_msg.c_str());
 }
 
@@ -42,6 +46,10 @@ RedisClientPool::RedisClientPool(
 RedisClientPool::~RedisClientPool() {
   if (sentinel_client_ && !sentinel_subscription_handle_.channel.empty())
     sentinel_client_->unsubscribe(sentinel_subscription_handle_);
+  // Destroy all clients before IO service stopping.
+  free_writable_clients_.clear();
+  free_read_only_clients_.clear();
+  sentinel_client_.reset(nullptr);
   io_service_->stop();
   io_service_thread_.join();
 }
@@ -178,6 +186,7 @@ void RedisClientPool::InitSentinelConnection() {
   boost::asio::ip::tcp::endpoint endpoint(server_ip, sentinel_port_);
   sentinel_client_ = std::unique_ptr<RedisAsyncClient>(
       new RedisAsyncClient(*io_service_));
+  sentinel_client_->installErrorHandler(&OnRedisError);
   std::promise<bool> connected_promise;
   std::future<bool> connected_future = connected_promise.get_future();
   sentinel_client_->connect(

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a GPLv2 license that can be
 // found in the LICENSE file.
 
-#ifndef STEXECUTOR_FILES_STORAGE_H_
-#define STEXECUTOR_FILES_STORAGE_H_
+#ifndef STEXECUTORLIB_FILES_STORAGE_H_
+#define STEXECUTORLIB_FILES_STORAGE_H_
 
 #include <string>
 
@@ -24,4 +24,4 @@ class FilesStorage {
       const std::string& storage_id, std::string* result) = 0;
 };
 
-#endif  // STEXECUTOR_FILES_STORAGE_H_
+#endif  // STEXECUTORLIB_FILES_STORAGE_H_

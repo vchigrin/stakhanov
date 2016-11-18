@@ -10,11 +10,12 @@
 
 #include "base/filesystem_utils.h"
 #include "base/init_logging.h"
+#include "base/interface.h"
+#include "base/redis_client_pool.h"
 #include "base/sthook_constants.h"
 #include "base/string_utils.h"
 #include "boost/program_options.hpp"
 #include "boost/property_tree/ptree.hpp"
-#include "boost/property_tree/json_parser.hpp"
 #include "boost/smart_ptr/make_shared.hpp"
 #include "log4cplus/logger.h"
 #include "log4cplus/loggingmacros.h"
@@ -23,12 +24,11 @@
 #include "stexecutor/executed_command_info.h"
 #include "stexecutor/executing_engine.h"
 #include "stexecutor/executor_factory.h"
-#include "stexecutor/distributed_files_storage.h"
 #include "stexecutor/files_filter.h"
 #include "stexecutor/process_management_config.h"
-#include "stexecutor/redis_client_pool.h"
 #include "stexecutor/rules_mappers/in_memory_rules_mapper.h"
 #include "stexecutor/rules_mappers/redis_rules_mapper.h"
+#include "stexecutorlib/distributed_files_storage.h"
 #include "sthook/sthook_communication.h"
 #include "thrift/server/TThreadedServer.h"
 #include "thrift/transport/TBufferTransports.h"
@@ -146,15 +146,6 @@ std::unique_ptr<rules_mappers::RulesMapper> CreateRulesMapper(
   }
 }
 
-boost::property_tree::ptree LoadConfig(
-    const boost::program_options::variables_map& variables) {
-  boost::filesystem::ifstream config_stream(
-      variables["config_file"].as<boost::filesystem::path>());
-  boost::property_tree::ptree config;
-  boost::property_tree::read_json(config_stream, config);
-  return config;
-}
-
 class CustomEventHandler : public apache::thrift::TProcessorEventHandler {
  public:
   virtual void handlerError(void* ctx, const char* fn_name) {
@@ -186,7 +177,7 @@ class CustomExecutorProcessorFactory : public ExecutorProcessorFactory {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char* argv[]) {
   using apache::thrift::transport::TPipeServer;
   using apache::thrift::transport::TBufferedTransportFactory;
   using apache::thrift::protocol::TBinaryProtocolFactory;
@@ -218,24 +209,9 @@ int main(int argc, char* argv[]) {
   desc.add(general_desc).add(in_memory_desc);
 
   boost::program_options::variables_map variables;
-  try {
-    boost::program_options::store(
-        boost::program_options::parse_command_line(argc, argv, desc),
-        variables);
-  } catch (const std::exception& ex) {
-    std::cerr << ex.what() << std::endl;
+  if (!interface::ProcessOptions(desc, argc, argv, &variables, std::string()))
     return 1;
-  }
-  if (variables.count("help")) {
-    std::cout << desc;
-    return 0;
-  }
-  try {
-    boost::program_options::notify(variables);
-  } catch (const std::exception& ex) {
-    std::cerr << ex.what() << std::endl;
-    return 1;
-  }
+
   boost::filesystem::path build_dir_path =
       variables["build_dir"].as<boost::filesystem::path>();
 
@@ -259,23 +235,10 @@ int main(int argc, char* argv[]) {
       ldr_load_dll_addr,
       nt_set_event_addr);
 
-  boost::property_tree::ptree config = LoadConfig(variables);
-  boost::property_tree::ptree redis_node = config.get_child("redis");
-
-  std::string redis_sentinel_ip = redis_node.get<std::string>("sentinel_ip");
-  std::string redis_slave_ip = redis_node.get<std::string>("slave_ip");
-  int redis_sentinel_port = redis_node.get<int>("sentinel_port");
-  int redis_slave_port = redis_node.get<int>("slave_port");
-  std::string sentinel_master_name = redis_node.get<std::string>(
-      "sentinel_master_name");
-
+  boost::property_tree::ptree config = interface::LoadConfig(
+      variables["config_file"].as<boost::filesystem::path>());
   std::shared_ptr<RedisClientPool> redis_client_pool =
-      std::make_shared<RedisClientPool>(
-          redis_sentinel_ip,
-          redis_sentinel_port,
-          redis_slave_ip,
-          redis_slave_port,
-          sentinel_master_name);
+      interface::BuildRedisClientPoolFromConfig(config);
 
   std::unique_ptr<FilesStorage> file_storage(
       new DistributedFilesStorage(config, redis_client_pool));
