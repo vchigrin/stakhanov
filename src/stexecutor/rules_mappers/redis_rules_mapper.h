@@ -28,7 +28,7 @@ class RedisRulesMapper : public RulesMapperBase {
       std::vector<FileInfo>* input_files) override;
   void AddRule(
       const ProcessCreationRequest& process_creation_request,
-      const std::vector<FileInfo>& input_files,
+      std::vector<FileInfo>&& input_files,
       std::unique_ptr<CachedExecutionResponse> response) override;
 
  private:

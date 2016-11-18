@@ -125,10 +125,10 @@ RedisRequestResults::RedisRequestResults(
 RedisRequestResults::~RedisRequestResults() {}
 
 void RedisRequestResults::AddRule(
-    const std::vector<FileInfo>& input_files,
+    std::vector<FileInfo>&& input_files,
     std::unique_ptr<CachedExecutionResponse> response) {
-  FileSet file_set(input_files);
-  HashValue input_files_hash = HashFileSet(file_set);
+  const FileSet file_set(std::move(input_files));
+  const HashValue input_files_hash = HashFileSet(file_set);
   std::string input_files_hash_string = HashValueToString(input_files_hash);
   SaveFileSet(FileSetHashToKey(input_files_hash_string), file_set);
   std::string key = RequestAndFileSetHashToKey(
@@ -217,7 +217,7 @@ bool RedisRequestResults::LoadFileSet(
       return false;
     file_infos.push_back(info);
   }
-  *file_set = FileSet(file_infos);
+  *file_set = FileSet(std::move(file_infos));
   return true;
 }
 
