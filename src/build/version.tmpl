@@ -1,0 +1,32 @@
+1 VERSIONINFO
+FILEVERSION @MAJOR@,@MINOR@,@BUILD@,@PATCH@
+PRODUCTVERSION @MAJOR@,@MINOR@,@BUILD@,@PATCH@
+FILEFLAGSMASK 0x17L
+#ifdef _DEBUG
+FILEFLAGS 0x1L
+
+#else
+FILEFLAGS 0x0L
+#endif
+FILEOS 0x4L
+FILETYPE @FILE_TYPE@
+FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904E4"
+    BEGIN
+      VALUE "CompanyName", L"Stakhanov project authors"
+      VALUE "FileDescription", "@FILE_DESCRIPTION@"
+      VALUE "FileVersion", L"@MAJOR@.@MINOR@.@BUILD@.@PATCH@"
+      VALUE "OriginalFilename", L"@FILE_NAME@"
+      VALUE "ProductName", L"Stakhanov build system"
+      VALUE "ProductVersion", L"@LASTCHANGE@"
+    END
+  END
+
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1252
+  END
+END

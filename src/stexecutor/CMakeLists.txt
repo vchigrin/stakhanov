@@ -2,6 +2,8 @@
 # Use of this source code is governed by a GPLv2 license that can be
 # found in the LICENSE file.
 
+add_version_resource(stexecutor.rc stexecutor.ver)
+
 add_executable(stexecutor
   build_directory_state.cc
   build_directory_state.h
@@ -43,6 +45,7 @@ add_executable(stexecutor
   rules_mappers/rules_mapper.h
   rules_mappers/rules_mapper_base.cc
   rules_mappers/rules_mapper_base.h
+  stexecutor.rc
 )
 
 target_link_libraries(stexecutor

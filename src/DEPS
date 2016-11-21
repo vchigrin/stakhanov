@@ -42,6 +42,11 @@ hooks = [
     ]
   },
   {
+     'name': 'make_lastchange_file',
+     'pattern': '.',
+     'action': [ 'python', 'src/build/make_lastchange.py' ]
+  },
+  {
      'name': 'generating_ninja_files',
      'pattern': '.',
      'action': [ 'python', 'src/build/run_cmake.py' ]

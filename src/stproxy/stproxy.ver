@@ -1,0 +1,3 @@
+FILE_DESCRIPTION=Process for replaying cache hits to the build system.
+FILE_NAME=stproxy.exe
+FILE_TYPE=1

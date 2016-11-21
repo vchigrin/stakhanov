@@ -2,6 +2,8 @@
 # Use of this source code is governed by a GPLv2 license that can be
 # found in the LICENSE file.
 
+add_version_resource(sthook.rc sthook.ver)
+
 add_library(sthook SHARED
   dllmain.cc
   functions_interceptor.cc
@@ -14,6 +16,7 @@ add_library(sthook SHARED
   process_proxy_manager.h
   reading_pipe.cc
   reading_pipe.h
+  sthook.rc
   std_handles_holder.cc
   std_handles_holder.h
 )

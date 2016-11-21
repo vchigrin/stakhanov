@@ -1,0 +1,3 @@
+FILE_DESCRIPTION=Main executing service.
+FILE_NAME=stexecutor.exe
+FILE_TYPE=1

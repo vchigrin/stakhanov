@@ -110,6 +110,22 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D UNICODE -D _UNICODE")
 endif()
 
+function(add_version_resource output_file_name version_data_file_name)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${output_file_name}
+    COMMAND python
+    ARGS
+        ${CMAKE_SOURCE_DIR}/build/make_version.py
+        ${CMAKE_CURRENT_BINARY_DIR}/${output_file_name}
+        ${CMAKE_CURRENT_SOURCE_DIR}/${version_data_file_name}
+    DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/${version_data_file_name}
+        ${CMAKE_SOURCE_DIR}/build/LASTCHANGE
+        ${CMAKE_SOURCE_DIR}/build/VERSION
+        ${CMAKE_SOURCE_DIR}/build/make_version.py
+        ${CMAKE_SOURCE_DIR}/build/version.tmpl)
+endfunction()
+
 set(CMAKE_DEBUG_POSTFIX "")
 
 add_subdirectory(base)
