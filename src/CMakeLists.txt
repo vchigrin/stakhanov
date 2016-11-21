@@ -94,16 +94,16 @@ set(THRIFT_INCLUDE "${CMAKE_SOURCE_DIR}/third_party/thrift/lib/cpp/src")
 
 # ---------------------- Log4cplus --------------------------------------------
 set(BUILD_SHARED_LIBS FALSE CACHE BOOL "" FORCE)
-add_subdirectory(third_party/log4cplus)
+add_subdirectory(third_party/log4cplus EXCLUDE_FROM_ALL)
 
 set(LOG4CPLUS_INCLUDE "${CMAKE_SOURCE_DIR}/third_party/log4cplus/include")
 
 # ---------------------- Crypto++ -----------------------------------------
-add_subdirectory(third_party/cryptopp)
+add_subdirectory(third_party/cryptopp EXCLUDE_FROM_ALL)
 
 # ---------------------- RedisClient -----------------------------------------
 add_definitions(-DREDIS_CLIENT_SEPARATED_COMPILATION)
-add_subdirectory(third_party/redisclient)
+add_subdirectory(third_party/redisclient EXCLUDE_FROM_ALL)
 
 # ---------------------- Other --------------------------------------------
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
