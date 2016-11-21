@@ -4,7 +4,7 @@
 
 add_version_resource(sthook.rc sthook.ver)
 
-add_library(sthook SHARED
+add_library(sthook MODULE
   dllmain.cc
   functions_interceptor.cc
   functions_interceptor.h
