@@ -47,6 +47,16 @@ int wmain(int argc, const wchar_t* argv[]) {
     std::cerr << "Usage: " << argv[0] << "<file_mapping_handle>" << std::endl;
     return 1;
   }
+
+#if defined(STAKHANOV_LASTCHANGE)
+  if (argc == 2 && std::wstring(L"--version") == argv[1]) {
+    std::cout << STAKHANOV_LASTCHANGE << std::endl;
+    return 0;
+  }
+#else
+#error "STAKHANOV_LASTCHANGE macro is not defined."
+#endif
+
   std::wistringstream buffer(argv[1]);
   HANDLE file_mapping_handle = NULL;
   buffer >> file_mapping_handle;
