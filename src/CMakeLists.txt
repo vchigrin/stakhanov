@@ -124,6 +124,12 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/build/VERSION
         ${CMAKE_SOURCE_DIR}/build/make_version.py
         ${CMAKE_SOURCE_DIR}/build/version.tmpl)
+# Read version and add it as a preprocessor define.
+file(STRINGS ${CMAKE_SOURCE_DIR}/build/LASTCHANGE STAKHANOV_LASTCHANGE_LINE)
+string(
+    REPLACE "LASTCHANGE=" "" STAKHANOV_LASTCHANGE
+    ${STAKHANOV_LASTCHANGE_LINE})
+add_definitions(-DSTAKHANOV_LASTCHANGE=\"${STAKHANOV_LASTCHANGE}\")
 endfunction()
 
 set(CMAKE_DEBUG_POSTFIX "")
