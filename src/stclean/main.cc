@@ -292,6 +292,7 @@ int main(int argc, const char* argv[]) {
   boost::program_options::options_description desc;
   desc.add_options()
       ("help", "Print help message")
+      ("version", "Print current build version")
       ("mode",
        boost::program_options::value<std::string>()->required(),
       "Mode of operation. Either clean-redis or clean-files-storage")
@@ -321,6 +322,7 @@ int main(int argc, const char* argv[]) {
       "Redis DB\n";
   if (!interface::ProcessOptions(desc, argc, argv, &variables, kHelp))
     return 1;
+
   const std::string mode = variables["mode"].as<std::string>();
   const bool clean_redis = (mode == "clean-redis");
   const bool clean_files_storage = (mode == "clean-files-storage");

@@ -30,3 +30,10 @@ target_include_directories(base PUBLIC
   ${BOOST_INCLUDE}
   ${LOG4CPLUS_INCLUDE}
 )
+
+# Read version and add it as a preprocessor define.
+file(STRINGS ${CMAKE_SOURCE_DIR}/build/LASTCHANGE STAKHANOV_LASTCHANGE_LINE)
+string(
+    REPLACE "LASTCHANGE=" "" STAKHANOV_LASTCHANGE
+    ${STAKHANOV_LASTCHANGE_LINE})
+add_definitions(-DSTAKHANOV_LASTCHANGE=\"${STAKHANOV_LASTCHANGE}\")
