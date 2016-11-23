@@ -66,6 +66,7 @@ ExecutorImpl::ExecutorImpl(
       files_filter_(files_filter),
       files_infos_filled_(false),
       is_helper_executor_(false) {
+  memset(&process_config_info_, 0, sizeof(process_config_info_));
 }
 
 bool ExecutorImpl::HookedCreateFile(
