@@ -80,15 +80,17 @@ set(BUILD_C_GLIB OFF CACHE BOOL "" FORCE)
 set(BUILD_JAVA OFF CACHE BOOL "" FORCE)
 set(BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(BUILD_TUTORIALS OFF CACHE BOOL "" FORCE)
 set(FLEX_EXECUTABLE
     "${CMAKE_SOURCE_DIR}/third_party/win_flex_bison/win_flex.exe")
 set(BISON_EXECUTABLE
     "${CMAKE_SOURCE_DIR}/third_party/win_flex_bison/win_bison.exe")
+set(OLD_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
+set(CMAKE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/thrift")
 # Thrift named pipes server is too noisy.
 add_definitions(-DTHRIFT_SQUELCH_CONSOLE_OUTPUT)
 
-add_subdirectory(third_party/thrift EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/thrift)
+set(CMAKE_SOURCE_DIR "${OLD_SOURCE_DIR}")
 
 set(THRIFT_INCLUDE "${CMAKE_SOURCE_DIR}/third_party/thrift/lib/cpp/src")
 
