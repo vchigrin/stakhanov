@@ -21,6 +21,15 @@ int wmain(int argc, wchar_t* argv[]) {
     std::cout << "Launches command under Stakhanov build system" << std::endl;
     return 1;
   }
+
+#if defined(STAKHANOV_LASTCHANGE)
+  if (argc == 2 && std::wstring(L"--version") == argv[1]) {
+    std::cout << STAKHANOV_LASTCHANGE << std::endl;
+    return 0;
+  }
+#else
+#error "STAKHANOV_LASTCHANGE macro is not defined."
+#endif
   std::wstring command_buffer;
   for (int i = 1; i < argc; ++i) {
     if (i > 1)

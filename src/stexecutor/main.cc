@@ -185,6 +185,7 @@ int main(int argc, const char* argv[]) {
   boost::program_options::options_description general_desc("General");
   general_desc.add_options()
       ("help", "Print help message")
+      ("version", "Print current build version")
       ("build_dir",
        boost::program_options::value<boost::filesystem::path>()->required(),
         "Directory where build will run")

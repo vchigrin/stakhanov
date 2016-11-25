@@ -38,6 +38,14 @@ bool ProcessOptions(
     std::cout << desc;
     return false;
   }
+
+#if defined(STAKHANOV_LASTCHANGE)
+  if (variables->count("version")) {
+    std::cout << STAKHANOV_LASTCHANGE << std::endl;
+    return false;
+  }
+#endif
+
   try {
     boost::program_options::notify(*variables);
   } catch (const std::exception& ex) {
